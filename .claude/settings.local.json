@@ -5,7 +5,9 @@
       "WebFetch(domain:chromedevtools.github.io)",
       "WebFetch(domain:github.com)",
       "WebFetch(domain:www.npmjs.com)",
-      "WebFetch(domain:raw.githubusercontent.com)"
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "Bash(mkdir:*)",
+      "Bash(ls:*)"
     ],
     "deny": [],
     "ask": []

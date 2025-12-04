@@ -7,7 +7,6 @@
 //! Then: cargo run --example agent
 
 use cdp_protocol::{ActionBuilder, ActionResult, BrowserAction, BrowserAgent, Result};
-use serde_json::json;
 use tracing_subscriber;
 
 #[tokio::main]
