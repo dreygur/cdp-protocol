@@ -1,9 +1,11 @@
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
+use tokio::sync::broadcast;
 
 use crate::client::CdpClient;
 use crate::config::Config;
 use crate::error::{CdpError, Result};
+use crate::types::ConsoleMessage;
 
 fn quote(s: &str) -> String {
     serde_json::to_string(s).unwrap_or_else(|_| format!("\"{}\"", s.replace('"', "\\\"")))
@@ -81,6 +83,31 @@ impl BrowserAgent {
         let agent = Self::connect(&config.host, config.port).await?;
         agent.client.set_viewport(config.viewport_width, config.viewport_height, false).await?;
         Ok(agent)
+    }
+
+    pub fn capture_console(&self) -> broadcast::Receiver<ConsoleMessage> {
+        let (tx, rx) = broadcast::channel(64);
+        let mut events = self.client.subscribe_events();
+        tokio::spawn(async move {
+            while let Ok((method, params)) = events.recv().await {
+                if method != "Runtime.consoleAPICalled" {
+                    continue;
+                }
+                let level = params["type"].as_str().unwrap_or("log").to_string();
+                let text = params["args"]
+                    .as_array()
+                    .and_then(|args| args.first())
+                    .and_then(|a| a["value"].as_str())
+                    .unwrap_or("")
+                    .to_string();
+                let url  = params["stackTrace"]["callFrames"][0]["url"]
+                    .as_str().map(str::to_owned);
+                let line = params["stackTrace"]["callFrames"][0]["lineNumber"]
+                    .as_u64();
+                let _ = tx.send(ConsoleMessage { level, text, url, line });
+            }
+        });
+        rx
     }
 
     pub async fn execute(&self, action: BrowserAction) -> ActionResult {

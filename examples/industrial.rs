@@ -183,9 +183,7 @@ async fn process_page(id: usize, url: &str, cfg: &Config) -> Result<(String, f64
     client.enable_domain("Runtime").await?;
 
     client.set_viewport(cfg.viewport_width, cfg.viewport_height, false).await?;
-    client.navigate(url).await?;
-
-    tokio::time::sleep(std::time::Duration::from_millis(2000)).await;
+    client.navigate_and_wait(url, 15_000).await?;
 
     let title = client
         .eval("document.title")

@@ -68,3 +68,11 @@ pub struct PerformanceMetric {
     pub name: String,
     pub value: f64,
 }
+
+#[derive(Debug, Clone)]
+pub struct ConsoleMessage {
+    pub level: String,
+    pub text: String,
+    pub url: Option<String>,
+    pub line: Option<u64>,
+}

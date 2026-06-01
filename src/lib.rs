@@ -1,6 +1,8 @@
 pub mod client;
 pub mod agent;
 pub mod config;
+pub mod network;
+pub mod page;
 pub mod types;
 pub mod error;
 

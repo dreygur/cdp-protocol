@@ -5,7 +5,7 @@ use std::sync::Arc;
 use base64::Engine;
 use futures_util::{SinkExt, StreamExt};
 use serde_json::{json, Value};
-use tokio::sync::{oneshot, Mutex};
+use tokio::sync::{broadcast, oneshot, Mutex};
 use tokio_tungstenite::{connect_async, tungstenite::Message};
 
 use crate::error::{CdpError, Result};
@@ -17,6 +17,7 @@ pub struct CdpClient {
     tx: tokio::sync::mpsc::UnboundedSender<Message>,
     pending: PendingMap,
     next_id: Arc<AtomicU64>,
+    events_tx: broadcast::Sender<(String, Value)>,
 }
 
 impl CdpClient {
@@ -26,6 +27,9 @@ impl CdpClient {
 
         let pending: PendingMap = Arc::new(Mutex::new(HashMap::new()));
         let pending_clone = pending.clone();
+
+        let (events_tx, _) = broadcast::channel::<(String, Value)>(256);
+        let events_tx_clone = events_tx.clone();
 
         let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<Message>();
 
@@ -45,6 +49,12 @@ impl CdpClient {
                             continue;
                         };
                         let Some(id) = val.get("id").and_then(|v| v.as_u64()) else {
+                            if let (Some(method), params) = (
+                                val.get("method").and_then(|v| v.as_str()).map(str::to_owned),
+                                val.get("params").cloned().unwrap_or(Value::Null),
+                            ) {
+                                let _ = events_tx_clone.send((method, params));
+                            }
                             continue;
                         };
                         let outcome = if val.get("error").is_some() {
@@ -73,7 +83,7 @@ impl CdpClient {
             }
         });
 
-        Ok(CdpClient { tx, pending, next_id: Arc::new(AtomicU64::new(1)) })
+        Ok(CdpClient { tx, pending, next_id: Arc::new(AtomicU64::new(1)), events_tx })
     }
 
     pub(crate) async fn send_command(&self, method: &str, params: Value) -> Result<Value> {
@@ -91,6 +101,29 @@ impl CdpClient {
         rx.await.map_err(|_| CdpError::Protocol("response channel closed".into()))?
     }
 
+    pub fn subscribe_events(&self) -> broadcast::Receiver<(String, Value)> {
+        self.events_tx.subscribe()
+    }
+
+    pub async fn wait_for_event(&self, method: &str, timeout_ms: u64) -> Result<Value> {
+        let mut rx = self.events_tx.subscribe();
+        tokio::time::timeout(
+            std::time::Duration::from_millis(timeout_ms),
+            async move {
+                loop {
+                    match rx.recv().await {
+                        Ok((m, params)) if m == method => return Ok(params),
+                        Ok(_) => continue,
+                        Err(broadcast::error::RecvError::Lagged(_)) => continue,
+                        Err(_) => return Err(CdpError::Protocol("event channel closed".into())),
+                    }
+                }
+            },
+        )
+        .await
+        .map_err(|_| CdpError::Timeout)?
+    }
+
     pub async fn enable_domain(&self, domain: &str) -> Result<()> {
         self.send_command(&format!("{domain}.enable"), json!({})).await?;
         Ok(())
@@ -99,6 +132,26 @@ impl CdpClient {
     pub async fn navigate(&self, url: &str) -> Result<NavigationResult> {
         let result = self.send_command("Page.navigate", json!({ "url": url })).await?;
         Ok(serde_json::from_value(result)?)
+    }
+
+    pub async fn navigate_and_wait(&self, url: &str, timeout_ms: u64) -> Result<NavigationResult> {
+        let mut rx = self.events_tx.subscribe();
+        let nav = self.navigate(url).await?;
+        tokio::time::timeout(
+            std::time::Duration::from_millis(timeout_ms),
+            async move {
+                loop {
+                    match rx.recv().await {
+                        Ok((m, _)) if m == "Page.loadEventFired" => return Ok(nav),
+                        Ok(_) => continue,
+                        Err(broadcast::error::RecvError::Lagged(_)) => continue,
+                        Err(_) => return Err(CdpError::Protocol("event channel closed".into())),
+                    }
+                }
+            },
+        )
+        .await
+        .map_err(|_| CdpError::Timeout)?
     }
 
     pub async fn eval(&self, expression: &str) -> Result<String> {
