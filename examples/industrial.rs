@@ -1,4 +1,5 @@
 use cdp_protocol::{CdpClient, CdpError, Config, Result};
+use tracing_subscriber::EnvFilter;
 use std::sync::Arc;
 use std::time::Instant;
 use tokio::sync::Semaphore;
@@ -116,6 +117,10 @@ const NUM_PAGES: usize = URLS.len();
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    tracing_subscriber::fmt()
+        .with_env_filter(EnvFilter::from_default_env())
+        .init();
+
     let cfg = Arc::new(Config::default());
     std::fs::create_dir_all(&cfg.screenshots_dir).ok();
 

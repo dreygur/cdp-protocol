@@ -7,6 +7,7 @@ use futures_util::{SinkExt, StreamExt};
 use serde_json::{json, Value};
 use tokio::sync::{broadcast, oneshot, Mutex};
 use tokio_tungstenite::{connect_async, tungstenite::Message};
+use tracing::{debug, warn};
 
 use crate::error::{CdpError, Result};
 use crate::types::*;
@@ -22,6 +23,7 @@ pub struct CdpClient {
 
 impl CdpClient {
     pub async fn connect(ws_url: &str) -> Result<Self> {
+        debug!(%ws_url, "connecting");
         let (ws_stream, _) = connect_async(ws_url).await?;
         let (mut sink, mut stream) = ws_stream.split();
 
@@ -53,6 +55,7 @@ impl CdpClient {
                                 val.get("method").and_then(|v| v.as_str()).map(str::to_owned),
                                 val.get("params").cloned().unwrap_or(Value::Null),
                             ) {
+                                debug!(%method, "event");
                                 let _ = events_tx_clone.send((method, params));
                             }
                             continue;
@@ -62,8 +65,10 @@ impl CdpClient {
                                 .as_str()
                                 .unwrap_or("protocol error")
                                 .to_string();
+                            warn!(id, %msg, "protocol error");
                             Err(CdpError::Protocol(msg))
                         } else {
+                            debug!(id, "recv");
                             Ok(val.get("result").cloned().unwrap_or(Value::Null))
                         };
                         let mut map = pending_clone.lock().await;
@@ -88,6 +93,7 @@ impl CdpClient {
 
     pub(crate) async fn send_command(&self, method: &str, params: Value) -> Result<Value> {
         let id = self.next_id.fetch_add(1, Ordering::SeqCst);
+        debug!(%method, id, "send");
         let (tx, rx) = oneshot::channel();
 
         self.pending.lock().await.insert(id, tx);

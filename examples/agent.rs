@@ -1,7 +1,12 @@
 use cdp_protocol::{ActionBuilder, BrowserAction, BrowserAgent, Config, Result};
+use tracing_subscriber::EnvFilter;
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    tracing_subscriber::fmt()
+        .with_env_filter(EnvFilter::from_default_env())
+        .init();
+
     let cfg = Config::default();
     std::fs::create_dir_all(&cfg.screenshots_dir).ok();
 
