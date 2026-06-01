@@ -1,65 +1,71 @@
-use crate::error::{CdpError, Result};
-use crate::types::*;
-use futures_util::{SinkExt, StreamExt};
-use serde_json::Value;
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
-use tokio::sync::{mpsc, oneshot, Mutex};
+
+use base64::Engine;
+use futures_util::{SinkExt, StreamExt};
+use serde_json::{json, Value};
+use tokio::sync::{oneshot, Mutex};
 use tokio_tungstenite::{connect_async, tungstenite::Message};
-use tracing::{debug, error, info};
 
-type ResponseSender = oneshot::Sender<Result<Value>>;
-type PendingRequests = Arc<Mutex<HashMap<u64, ResponseSender>>>;
-type EventCallback = Arc<dyn Fn(CdpEvent) + Send + Sync>;
+use crate::error::{CdpError, Result};
+use crate::types::*;
 
-/// CDP Client for browser communication
+type PendingMap = Arc<Mutex<HashMap<u64, oneshot::Sender<Result<Value>>>>>;
+
 pub struct CdpClient {
-    ws_sender: mpsc::Sender<Message>,
-    pending: PendingRequests,
-    next_id: AtomicU64,
-    event_handlers: Arc<Mutex<HashMap<String, Vec<EventCallback>>>>,
-    _receiver_handle: tokio::task::JoinHandle<()>,
+    tx: tokio::sync::mpsc::UnboundedSender<Message>,
+    pending: PendingMap,
+    next_id: Arc<AtomicU64>,
 }
 
 impl CdpClient {
-    /// Connect to a Chrome instance at the given WebSocket URL
     pub async fn connect(ws_url: &str) -> Result<Self> {
-        info!("Connecting to {}", ws_url);
         let (ws_stream, _) = connect_async(ws_url).await?;
-        let (mut write, mut read) = ws_stream.split();
+        let (mut sink, mut stream) = ws_stream.split();
 
-        let (tx, mut rx) = mpsc::channel::<Message>(100);
-        let pending: PendingRequests = Arc::new(Mutex::new(HashMap::new()));
-        let event_handlers: Arc<Mutex<HashMap<String, Vec<EventCallback>>>> =
-            Arc::new(Mutex::new(HashMap::new()));
-
+        let pending: PendingMap = Arc::new(Mutex::new(HashMap::new()));
         let pending_clone = pending.clone();
-        let handlers_clone = event_handlers.clone();
 
-        // Spawn writer task
+        let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<Message>();
+
         tokio::spawn(async move {
             while let Some(msg) = rx.recv().await {
-                if let Err(e) = write.send(msg).await {
-                    error!("WebSocket write error: {}", e);
+                if sink.send(msg).await.is_err() {
                     break;
                 }
             }
         });
 
-        // Spawn reader task
-        let receiver_handle = tokio::spawn(async move {
-            while let Some(msg) = read.next().await {
+        tokio::spawn(async move {
+            while let Some(msg) = stream.next().await {
                 match msg {
                     Ok(Message::Text(text)) => {
-                        Self::handle_message(&text, &pending_clone, &handlers_clone).await;
+                        let Ok(val) = serde_json::from_str::<Value>(&text) else {
+                            continue;
+                        };
+                        let Some(id) = val.get("id").and_then(|v| v.as_u64()) else {
+                            continue;
+                        };
+                        let outcome = if val.get("error").is_some() {
+                            let msg = val["error"]["message"]
+                                .as_str()
+                                .unwrap_or("protocol error")
+                                .to_string();
+                            Err(CdpError::Protocol(msg))
+                        } else {
+                            Ok(val.get("result").cloned().unwrap_or(Value::Null))
+                        };
+                        let mut map = pending_clone.lock().await;
+                        if let Some(tx) = map.remove(&id) {
+                            let _ = tx.send(outcome);
+                        }
                     }
-                    Ok(Message::Close(_)) => {
-                        info!("WebSocket closed");
-                        break;
-                    }
-                    Err(e) => {
-                        error!("WebSocket read error: {}", e);
+                    Ok(Message::Close(_)) | Err(_) => {
+                        let mut map = pending_clone.lock().await;
+                        for (_, tx) in map.drain() {
+                            let _ = tx.send(Err(CdpError::Protocol("connection closed".into())));
+                        }
                         break;
                     }
                     _ => {}
@@ -67,373 +73,167 @@ impl CdpClient {
             }
         });
 
-        Ok(Self {
-            ws_sender: tx,
-            pending,
-            next_id: AtomicU64::new(1),
-            event_handlers,
-            _receiver_handle: receiver_handle,
-        })
+        Ok(CdpClient { tx, pending, next_id: Arc::new(AtomicU64::new(1)) })
     }
 
-    /// Connect to the first available page target
+    pub(crate) async fn send_command(&self, method: &str, params: Value) -> Result<Value> {
+        let id = self.next_id.fetch_add(1, Ordering::SeqCst);
+        let (tx, rx) = oneshot::channel();
+
+        self.pending.lock().await.insert(id, tx);
+
+        self.tx
+            .send(Message::Text(
+                json!({ "id": id, "method": method, "params": params }).to_string(),
+            ))
+            .map_err(|e| CdpError::Protocol(e.to_string()))?;
+
+        rx.await.map_err(|_| CdpError::Protocol("response channel closed".into()))?
+    }
+
+    pub async fn enable_domain(&self, domain: &str) -> Result<()> {
+        self.send_command(&format!("{domain}.enable"), json!({})).await?;
+        Ok(())
+    }
+
+    pub async fn navigate(&self, url: &str) -> Result<NavigationResult> {
+        let result = self.send_command("Page.navigate", json!({ "url": url })).await?;
+        Ok(serde_json::from_value(result)?)
+    }
+
+    pub async fn eval(&self, expression: &str) -> Result<String> {
+        let result = self.evaluate(expression).await?;
+        Ok(result.result.value.map(|v| match v {
+            Value::String(s) => s,
+            other => other.to_string(),
+        }).unwrap_or_default())
+    }
+
+    pub async fn evaluate(&self, expression: &str) -> Result<EvaluateResult> {
+        let result = self
+            .send_command("Runtime.evaluate", json!({ "expression": expression, "returnByValue": true }))
+            .await?;
+        Ok(serde_json::from_value(result)?)
+    }
+
+    pub async fn get_document(&self) -> Result<DocumentNode> {
+        let result = self.send_command("DOM.getDocument", json!({ "depth": 0 })).await?;
+        let root = result["root"].clone();
+        if root.is_null() {
+            return Err(CdpError::Protocol("DOM.getDocument returned no root".into()));
+        }
+        Ok(serde_json::from_value(root)?)
+    }
+
+    pub async fn query_selector(&self, node_id: i64, selector: &str) -> Result<i64> {
+        let result = self
+            .send_command("DOM.querySelector", json!({ "nodeId": node_id, "selector": selector }))
+            .await?;
+        Ok(result["nodeId"].as_i64().unwrap_or(0))
+    }
+
+    pub async fn get_outer_html(&self, node_id: i64) -> Result<String> {
+        let result = self
+            .send_command("DOM.getOuterHTML", json!({ "nodeId": node_id }))
+            .await?;
+        Ok(result["outerHTML"].as_str().unwrap_or("").to_string())
+    }
+
+    pub async fn close(&self) -> Result<()> {
+        // Ignore errors — connection drops immediately after the tab closes
+        let _ = self.send_command("Page.close", json!({})).await;
+        Ok(())
+    }
+
+    pub async fn screenshot(&self) -> Result<Vec<u8>> {
+        let result = self
+            .send_command("Page.captureScreenshot", json!({ "format": "png", "fromSurface": true }))
+            .await?;
+        png_bytes_from(&result)
+    }
+
+    pub async fn screenshot_to_file(&self, path: &str) -> Result<()> {
+        tokio::fs::write(path, self.screenshot().await?).await?;
+        Ok(())
+    }
+
+    pub async fn full_page_screenshot(&self) -> Result<Vec<u8>> {
+        let size = self.evaluate(
+            "(() => ({ \
+                w: Math.max(document.body.scrollWidth, document.documentElement.scrollWidth), \
+                h: Math.max(document.body.scrollHeight, document.documentElement.scrollHeight) \
+            }))()"
+        ).await?;
+
+        let dims = size.result.value.as_ref();
+        let w = dims.and_then(|v| v["w"].as_i64()).unwrap_or(1920) as i32;
+        let h = dims.and_then(|v| v["h"].as_i64()).unwrap_or(1200) as i32;
+        self.set_viewport(w.max(1920), h.max(1200), false).await?;
+
+        let result = self
+            .send_command("Page.captureScreenshot", json!({
+                "format": "png",
+                "captureBeyondViewport": true,
+                "fromSurface": true,
+            }))
+            .await?;
+        png_bytes_from(&result)
+    }
+
+    pub async fn full_page_screenshot_to_file(&self, path: &str) -> Result<()> {
+        tokio::fs::write(path, self.full_page_screenshot().await?).await?;
+        Ok(())
+    }
+
+    pub async fn set_viewport(&self, width: i32, height: i32, mobile: bool) -> Result<()> {
+        self.send_command(
+            "Emulation.setDeviceMetricsOverride",
+            json!({ "width": width, "height": height, "deviceScaleFactor": 1, "mobile": mobile }),
+        ).await?;
+        Ok(())
+    }
+
+    pub async fn get_cookies(&self) -> Result<Vec<Cookie>> {
+        let result = self.send_command("Network.getCookies", json!({})).await?;
+        Ok(serde_json::from_value(result["cookies"].clone()).unwrap_or_default())
+    }
+
+    pub async fn get_version(host: &str, port: u16) -> Result<BrowserVersion> {
+        let url = format!("http://{host}:{port}/json/version");
+        Ok(reqwest::get(&url).await?.json().await?)
+    }
+
+    pub async fn list_targets(host: &str, port: u16) -> Result<Vec<Target>> {
+        let url = format!("http://{host}:{port}/json/list");
+        Ok(reqwest::get(&url).await?.json().await?)
+    }
+
     pub async fn connect_to_page(host: &str, port: u16) -> Result<Self> {
         let targets = Self::list_targets(host, port).await?;
         let page = targets
             .into_iter()
             .find(|t| t.target_type == "page")
-            .ok_or(CdpError::NoTargets)?;
-
-        let ws_url = page
-            .web_socket_debugger_url
-            .ok_or_else(|| CdpError::InvalidUrl("No WebSocket URL for target".into()))?;
-
+            .ok_or(CdpError::NoTarget)?;
+        let ws_url = page.web_socket_debugger_url
+            .ok_or_else(|| CdpError::InvalidUrl("target has no debugger URL".into()))?;
         Self::connect(&ws_url).await
     }
 
-    /// List available targets via HTTP endpoint
-    pub async fn list_targets(host: &str, port: u16) -> Result<Vec<TargetInfo>> {
-        let url = format!("http://{}:{}/json/list", host, port);
-        let resp = reqwest::get(&url).await?;
-        let targets: Vec<TargetInfo> = resp.json().await?;
-        Ok(targets)
-    }
-
-    /// Get browser version info
-    pub async fn get_version(host: &str, port: u16) -> Result<BrowserVersion> {
-        let url = format!("http://{}:{}/json/version", host, port);
-        let resp = reqwest::get(&url).await?;
-        let version: BrowserVersion = resp.json().await?;
-        Ok(version)
-    }
-
-    /// Create a new tab
-    pub async fn create_tab(host: &str, port: u16, url: Option<&str>) -> Result<TargetInfo> {
+    pub async fn create_tab(host: &str, port: u16, url: Option<&str>) -> Result<Target> {
+        // Chrome requires PUT for /json/new (GET returns 405 in modern versions)
         let endpoint = match url {
-            Some(u) => format!("http://{}:{}/json/new?{}", host, port, u),
-            None => format!("http://{}:{}/json/new", host, port),
+            Some(u) => format!("http://{host}:{port}/json/new?{u}"),
+            None => format!("http://{host}:{port}/json/new"),
         };
-        let client = reqwest::Client::new();
-        let resp = client.put(&endpoint).send().await?;
-        let target: TargetInfo = resp.json().await?;
-        Ok(target)
-    }
-
-    /// Send a CDP command and wait for response
-    pub async fn send(&self, method: &str, params: Option<Value>) -> Result<Value> {
-        let id = self.next_id.fetch_add(1, Ordering::SeqCst);
-        let cmd = CdpCommand {
-            id,
-            method: method.to_string(),
-            params,
-        };
-
-        let json = serde_json::to_string(&cmd)?;
-        debug!("Sending: {}", json);
-
-        let (tx, rx) = oneshot::channel();
-        self.pending.lock().await.insert(id, tx);
-
-        self.ws_sender
-            .send(Message::Text(json))
-            .await
-            .map_err(|e| CdpError::Channel(e.to_string()))?;
-
-        // Wait for response with timeout
-        match tokio::time::timeout(std::time::Duration::from_secs(30), rx).await {
-            Ok(Ok(result)) => result,
-            Ok(Err(_)) => Err(CdpError::Channel("Response channel closed".into())),
-            Err(_) => Err(CdpError::Timeout),
-        }
-    }
-
-    /// Register an event handler
-    pub async fn on_event<F>(&self, method: &str, callback: F)
-    where
-        F: Fn(CdpEvent) + Send + Sync + 'static,
-    {
-        let mut handlers = self.event_handlers.lock().await;
-        handlers
-            .entry(method.to_string())
-            .or_default()
-            .push(Arc::new(callback));
-    }
-
-    async fn handle_message(
-        text: &str,
-        pending: &PendingRequests,
-        handlers: &Arc<Mutex<HashMap<String, Vec<EventCallback>>>>,
-    ) {
-        debug!("Received: {}", text);
-
-        // Try parsing as response first (has 'id' field)
-        if let Ok(resp) = serde_json::from_str::<CdpResponse>(text) {
-            if let Some(sender) = pending.lock().await.remove(&resp.id) {
-                let result = if let Some(err) = resp.error {
-                    Err(CdpError::Protocol {
-                        code: err.code,
-                        message: err.message,
-                    })
-                } else {
-                    Ok(resp.result.unwrap_or(Value::Null))
-                };
-                let _ = sender.send(result);
-            }
-            return;
-        }
-
-        // Try parsing as event (no 'id' field)
-        if let Ok(event) = serde_json::from_str::<CdpEvent>(text) {
-            let handlers = handlers.lock().await;
-
-            // Call specific handlers
-            if let Some(cbs) = handlers.get(&event.method) {
-                for cb in cbs {
-                    cb(event.clone());
-                }
-            }
-
-            // Call wildcard handlers
-            if let Some(cbs) = handlers.get("*") {
-                for cb in cbs {
-                    cb(event.clone());
-                }
-            }
-        }
-    }
-
-    // ============ Convenience methods ============
-
-    /// Enable a domain
-    pub async fn enable_domain(&self, domain: &str) -> Result<Value> {
-        self.send(&format!("{}.enable", domain), None).await
-    }
-
-    /// Disable a domain
-    pub async fn disable_domain(&self, domain: &str) -> Result<Value> {
-        self.send(&format!("{}.disable", domain), None).await
+        Ok(reqwest::Client::new().put(&endpoint).send().await?.json().await?)
     }
 }
 
-// ============ Domain-specific implementations ============
-
-impl CdpClient {
-    /// Navigate to URL
-    pub async fn navigate(&self, url: &str) -> Result<NavigateResult> {
-        let params = serde_json::json!({ "url": url });
-        let result = self.send("Page.navigate", Some(params)).await?;
-        Ok(serde_json::from_value(result)?)
-    }
-
-    /// Reload page
-    pub async fn reload(&self, ignore_cache: bool) -> Result<()> {
-        let params = serde_json::json!({ "ignoreCache": ignore_cache });
-        self.send("Page.reload", Some(params)).await?;
-        Ok(())
-    }
-
-    /// Capture screenshot (returns base64 PNG)
-    pub async fn screenshot(&self) -> Result<String> {
-        let params = serde_json::json!({
-            "format": "png",
-            "captureBeyondViewport": true
-        });
-        let result = self.send("Page.captureScreenshot", Some(params)).await?;
-        let screenshot: ScreenshotResult = serde_json::from_value(result)?;
-        Ok(screenshot.data)
-    }
-
-    /// Capture screenshot and save to file
-    pub async fn screenshot_to_file(&self, path: &str) -> Result<()> {
-        let data = self.screenshot().await?;
-        let bytes = base64::Engine::decode(&base64::engine::general_purpose::STANDARD, &data)
-            .map_err(|e| CdpError::Channel(e.to_string()))?;
-        std::fs::write(path, bytes).map_err(|e| CdpError::Channel(e.to_string()))?;
-        Ok(())
-    }
-
-    /// Print page to PDF (returns base64)
-    pub async fn print_pdf(&self) -> Result<String> {
-        let result = self.send("Page.printToPDF", None).await?;
-        Ok(result["data"].as_str().unwrap_or_default().to_string())
-    }
-
-    /// Evaluate JavaScript expression
-    pub async fn evaluate(&self, expression: &str) -> Result<EvaluateResult> {
-        let params = serde_json::json!({
-            "expression": expression,
-            "returnByValue": true,
-            "awaitPromise": true
-        });
-        let result = self.send("Runtime.evaluate", Some(params)).await?;
-        Ok(serde_json::from_value(result)?)
-    }
-
-    /// Evaluate and return simple value
-    pub async fn eval<T: serde::de::DeserializeOwned>(&self, expression: &str) -> Result<T> {
-        let result = self.evaluate(expression).await?;
-        if let Some(val) = result.result.value {
-            Ok(serde_json::from_value(val)?)
-        } else {
-            Err(CdpError::Protocol {
-                code: -1,
-                message: "No value returned".into(),
-            })
-        }
-    }
-
-    /// Get document root
-    pub async fn get_document(&self) -> Result<DomNode> {
-        let params = serde_json::json!({ "depth": -1 });
-        let result = self.send("DOM.getDocument", Some(params)).await?;
-        let doc: DocumentResult = serde_json::from_value(result)?;
-        Ok(doc.root)
-    }
-
-    /// Query selector
-    pub async fn query_selector(&self, node_id: i64, selector: &str) -> Result<i64> {
-        let params = serde_json::json!({
-            "nodeId": node_id,
-            "selector": selector
-        });
-        let result = self.send("DOM.querySelector", Some(params)).await?;
-        Ok(result["nodeId"].as_i64().unwrap_or(0))
-    }
-
-    /// Get outer HTML of a node
-    pub async fn get_outer_html(&self, node_id: i64) -> Result<String> {
-        let params = serde_json::json!({ "nodeId": node_id });
-        let result = self.send("DOM.getOuterHTML", Some(params)).await?;
-        Ok(result["outerHTML"].as_str().unwrap_or_default().to_string())
-    }
-
-    /// Click at coordinates
-    pub async fn click(&self, x: f64, y: f64) -> Result<()> {
-        // Mouse down
-        let params = serde_json::json!({
-            "type": "mousePressed",
-            "x": x,
-            "y": y,
-            "button": "left",
-            "clickCount": 1
-        });
-        self.send("Input.dispatchMouseEvent", Some(params)).await?;
-
-        // Mouse up
-        let params = serde_json::json!({
-            "type": "mouseReleased",
-            "x": x,
-            "y": y,
-            "button": "left",
-            "clickCount": 1
-        });
-        self.send("Input.dispatchMouseEvent", Some(params)).await?;
-        Ok(())
-    }
-
-    /// Type text
-    pub async fn type_text(&self, text: &str) -> Result<()> {
-        let params = serde_json::json!({ "text": text });
-        self.send("Input.insertText", Some(params)).await?;
-        Ok(())
-    }
-
-    /// Press a key
-    pub async fn press_key(&self, key: &str) -> Result<()> {
-        // Key down
-        let params = serde_json::json!({
-            "type": "keyDown",
-            "key": key
-        });
-        self.send("Input.dispatchKeyEvent", Some(params)).await?;
-
-        // Key up
-        let params = serde_json::json!({
-            "type": "keyUp",
-            "key": key
-        });
-        self.send("Input.dispatchKeyEvent", Some(params)).await?;
-        Ok(())
-    }
-
-    /// Set viewport size
-    pub async fn set_viewport(&self, width: i32, height: i32, mobile: bool) -> Result<()> {
-        let params = serde_json::json!({
-            "width": width,
-            "height": height,
-            "deviceScaleFactor": 1,
-            "mobile": mobile
-        });
-        self.send("Emulation.setDeviceMetricsOverride", Some(params))
-            .await?;
-        Ok(())
-    }
-
-    /// Set user agent
-    pub async fn set_user_agent(&self, user_agent: &str) -> Result<()> {
-        let params = serde_json::json!({ "userAgent": user_agent });
-        self.send("Emulation.setUserAgentOverride", Some(params))
-            .await?;
-        Ok(())
-    }
-
-    /// Get cookies
-    pub async fn get_cookies(&self) -> Result<Vec<Value>> {
-        let result = self.send("Network.getCookies", None).await?;
-        Ok(result["cookies"]
-            .as_array()
-            .cloned()
-            .unwrap_or_default())
-    }
-
-    /// Set a cookie
-    pub async fn set_cookie(&self, name: &str, value: &str, url: &str) -> Result<bool> {
-        let params = serde_json::json!({
-            "name": name,
-            "value": value,
-            "url": url
-        });
-        let result = self.send("Network.setCookie", Some(params)).await?;
-        Ok(result["success"].as_bool().unwrap_or(false))
-    }
-
-    /// Clear browser cookies
-    pub async fn clear_cookies(&self) -> Result<()> {
-        self.send("Network.clearBrowserCookies", None).await?;
-        Ok(())
-    }
-
-    /// Get response body for a request
-    pub async fn get_response_body(&self, request_id: &str) -> Result<String> {
-        let params = serde_json::json!({ "requestId": request_id });
-        let result = self.send("Network.getResponseBody", Some(params)).await?;
-        Ok(result["body"].as_str().unwrap_or_default().to_string())
-    }
-
-    /// Wait for page load
-    pub async fn wait_for_load(&self) -> Result<()> {
-        self.evaluate("new Promise(r => { if (document.readyState === 'complete') r(); else window.addEventListener('load', r); })").await?;
-        Ok(())
-    }
-
-    /// Wait for selector to appear
-    pub async fn wait_for_selector(&self, selector: &str, timeout_ms: u64) -> Result<()> {
-        let script = format!(
-            r#"
-            new Promise((resolve, reject) => {{
-                const el = document.querySelector('{}');
-                if (el) return resolve(true);
-                const observer = new MutationObserver(() => {{
-                    const el = document.querySelector('{}');
-                    if (el) {{ observer.disconnect(); resolve(true); }}
-                }});
-                observer.observe(document.body, {{ childList: true, subtree: true }});
-                setTimeout(() => {{ observer.disconnect(); reject(new Error('Timeout')); }}, {});
-            }})
-            "#,
-            selector, selector, timeout_ms
-        );
-        self.evaluate(&script).await?;
-        Ok(())
-    }
+fn png_bytes_from(result: &Value) -> Result<Vec<u8>> {
+    let data = result["data"]
+        .as_str()
+        .ok_or_else(|| CdpError::Protocol("screenshot response has no data".into()))?;
+    base64::engine::general_purpose::STANDARD
+        .decode(data)
+        .map_err(|e| CdpError::Protocol(e.to_string()))
 }

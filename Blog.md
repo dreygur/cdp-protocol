@@ -1,6 +1,4 @@
-# Browser Automation Protocols: CDP vs WebDriver Deep Dive
-
-> A technical lead's perspective on browser automation internals, protocol architectures, and when to use what.
+> A technical perspective on browser automation internals, protocol architectures, and when to use what.
 
 ---
 
@@ -34,7 +32,7 @@ Both solve browser automation. Neither is universally "better." Your use case di
 
 ### WebDriver Architecture
 
-```
+```plaintext
 ┌──────────────┐    HTTP/REST    ┌──────────────┐    Native    ┌─────────────┐
 │    Client    │ ◄────────────► │    Driver    │ ◄──────────► │   Browser   │
 │  (Selenium)  │   Port 4444    │  (chromedriver│   Protocol  │   (Chrome)  │
@@ -51,7 +49,7 @@ Both solve browser automation. Neither is universally "better." Your use case di
 
 ### CDP Architecture
 
-```
+```plaintext
 ┌──────────────┐    WebSocket    ┌─────────────┐
 │    Client    │ ◄────────────► │   Browser   │
 │   (Direct)   │   Port 9222    │   (Chrome)  │
@@ -76,7 +74,7 @@ WebDriver is a [W3C Recommendation](https://www.w3.org/TR/webdriver2/) since 201
 
 HTTP/REST with JSON payloads:
 
-```
+```http
 POST /session HTTP/1.1
 Content-Type: application/json
 
@@ -190,7 +188,7 @@ CDP is Chrome's native debugging protocol. It's what DevTools uses internally. D
 
 Bidirectional WebSocket with JSON-RPC:
 
-```
+```plaintext
 Client                                Browser
    │                                     │
    │──── {"id":1,"method":"Page.navigate", ───►
@@ -549,7 +547,7 @@ curl http://localhost:9222/json/close/ABC123
 
 Modern tools use both:
 
-```
+```plaintext
 Playwright:
   - WebDriver for cross-browser compat
   - CDP for Chrome-specific features
@@ -567,12 +565,13 @@ We built a production-ready Rust CDP client with two abstraction layers.
 
 ### Project Structure
 
-```
+```plaintext
 cdp-protocol/
 ├── src/
 │   ├── lib.rs          # Public exports
 │   ├── client.rs       # Low-level CDP client (WebSocket, routing)
 │   ├── agent.rs        # High-level BrowserAgent (AI-friendly)
+│   ├── config.rs       # Shared configuration (host, port, viewport, screenshots dir)
 │   ├── types.rs        # Protocol message types
 │   └── error.rs        # Error handling
 ├── examples/
@@ -587,7 +586,8 @@ cdp-protocol/
 ```toml
 [dependencies]
 tokio = { version = "1", features = ["full"] }
-tokio-tungstenite = "0.21"
+tokio-tungstenite = { version = "0.21", features = ["native-tls"] }
+futures-util = "0.3"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 reqwest = { version = "0.11", features = ["json"] }
@@ -600,52 +600,47 @@ tracing = "0.1"
 Direct protocol access with convenience wrappers.
 
 ```rust
-use cdp_protocol::{CdpClient, Result};
+use cdp_protocol::{CdpClient, Config, Result};
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    // Discovery
-    let version = CdpClient::get_version("localhost", 9222).await?;
+    let cfg = Config::default();
+    std::fs::create_dir_all(&cfg.screenshots_dir).ok();
+
+    let version = CdpClient::get_version(&cfg.host, cfg.port).await?;
     println!("Browser: {}", version.browser);
 
-    let targets = CdpClient::list_targets("localhost", 9222).await?;
+    let targets = CdpClient::list_targets(&cfg.host, cfg.port).await?;
     for target in &targets {
         println!("  - {} [{}]: {}", target.target_type, target.id, target.title);
     }
 
-    // Connect
-    let client = CdpClient::connect_to_page("localhost", 9222).await?;
+    let client = CdpClient::connect_to_page(&cfg.host, cfg.port).await?;
 
-    // Enable domains
-    client.enable_domain("Page").await?;
-    client.enable_domain("Runtime").await?;
-    client.enable_domain("DOM").await?;
+    for domain in ["Page", "Runtime", "DOM", "Network"] {
+        client.enable_domain(domain).await?;
+    }
+    client.set_viewport(cfg.viewport_width, cfg.viewport_height, false).await?;
 
-    // Navigate
     let nav = client.navigate("https://example.com").await?;
     println!("Frame ID: {}", nav.frame_id);
 
     tokio::time::sleep(std::time::Duration::from_secs(2)).await;
 
-    // JavaScript
-    let title: String = client.eval("document.title").await?;
+    let title = client.eval("document.title").await?;
     println!("Title: {}", title);
 
     let result = client.evaluate("1 + 2 * 3").await?;
     println!("Math: {:?}", result.result.value);
 
-    // DOM
     let doc = client.get_document().await?;
     let h1_id = client.query_selector(doc.node_id, "h1").await?;
     if h1_id > 0 {
-        let html = client.get_outer_html(h1_id).await?;
-        println!("H1: {}", html);
+        println!("H1: {}", client.get_outer_html(h1_id).await?);
     }
 
-    // Screenshot
-    client.screenshot_to_file("example.png").await?;
+    client.full_page_screenshot_to_file(&format!("{}/example.png", cfg.screenshots_dir)).await?;
 
-    // Cookies
     let cookies = client.get_cookies().await?;
     println!("Cookies: {}", cookies.len());
 
@@ -658,23 +653,24 @@ async fn main() -> Result<()> {
 AI-friendly interface with JSON action dispatch.
 
 ```rust
-use cdp_protocol::{BrowserAgent, BrowserAction, ActionResult};
+use cdp_protocol::{BrowserAgent, BrowserAction, Config, Result};
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    let agent = BrowserAgent::connect("localhost", 9222).await?;
+    let cfg = Config::default();
+    std::fs::create_dir_all(&cfg.screenshots_dir).ok();
 
-    // Programmatic
+    let agent = BrowserAgent::connect_with_config(&cfg).await?;
+
     agent.execute(BrowserAction::Navigate {
         url: "https://example.com".to_string(),
     }).await;
 
     agent.execute(BrowserAction::GetTitle).await;
 
-    // JSON (LLM tool calls)
     agent.execute_json(r#"{"action": "navigate", "url": "https://rust-lang.org"}"#).await;
     agent.execute_json(r#"{"action": "wait", "ms": 2000}"#).await;
-    agent.execute_json(r#"{"action": "screenshot", "path": "rust.png"}"#).await;
+    agent.execute_json(r#"{"action": "screenshot", "path": "screenshots/rust.png"}"#).await;
 
     Ok(())
 }
@@ -703,20 +699,17 @@ let results = agent.execute_many(actions).await;
 
 ```rust
 pub enum BrowserAction {
-    // Navigation
     Navigate { url: String },
     GoBack,
     GoForward,
     Reload,
 
-    // Interaction
     Click { selector: Option<String>, x: Option<f64>, y: Option<f64> },
     Type { text: String, selector: Option<String> },
     Fill { selector: String, value: String },
     Submit { selector: Option<String> },
     PressKey { key: String },
 
-    // Inspection
     GetTitle,
     GetUrl,
     GetText,
@@ -725,21 +718,14 @@ pub enum BrowserAction {
     GetAttributes { selector: String },
     Exists { selector: String },
 
-    // Capture
     Screenshot { path: Option<String> },
-
-    // Scripting
     Evaluate { expression: String },
 
-    // Waiting
     Wait { ms: u64 },
     WaitForSelector { selector: String, timeout_ms: u64 },
 
-    // Layout
     Scroll { x: f64, y: f64 },
     SetViewport { width: i32, height: i32, mobile: bool },
-
-    // Metrics
     GetMetrics,
 }
 ```
@@ -800,113 +786,116 @@ let result = agent.execute(BrowserAction::Evaluate {
 }).await;
 ```
 
-### Industrial Scraping (50 Pages Parallel)
+### Industrial Scraping (100 Pages Parallel)
 
 ```rust
-use cdp_protocol::{CdpClient, Result};
+use cdp_protocol::{CdpClient, CdpError, Config, Result};
 use std::sync::Arc;
 use std::time::Instant;
 use tokio::sync::Semaphore;
+use tokio::task::JoinSet;
 
-const NUM_PAGES: usize = 50;
-const MAX_CONCURRENT: usize = 10;
+const MAX_CONCURRENT: usize = 5;
 
 const URLS: &[&str] = &[
+    "https://slishee.com",
     "https://www.rust-lang.org",
     "https://www.google.com",
-    "https://github.com",
-    "https://stackoverflow.com",
-    "https://news.ycombinator.com",
-    "https://www.wikipedia.org",
-    "https://www.reddit.com",
-    "https://docs.rs",
-    "https://crates.io",
-    "https://www.mozilla.org",
+    // ... 97 more
 ];
+
+const NUM_PAGES: usize = URLS.len();
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    std::fs::create_dir_all("screenshots").ok();
+    let cfg = Arc::new(Config::default());
+    std::fs::create_dir_all(&cfg.screenshots_dir).ok();
+
+    println!("=== Industrial Scraping Demo ===");
+    println!("Pages to process: {NUM_PAGES}");
+    println!("Max concurrent:   {MAX_CONCURRENT}\n");
 
     let start = Instant::now();
     let semaphore = Arc::new(Semaphore::new(MAX_CONCURRENT));
-
-    let mut handles = Vec::with_capacity(NUM_PAGES);
+    let mut set = JoinSet::new();
 
     for i in 0..NUM_PAGES {
-        let url = URLS[i % URLS.len()].to_string();
+        let url = URLS[i].to_string();
         let sem = semaphore.clone();
+        let cfg = cfg.clone();
 
-        let handle = tokio::spawn(async move {
+        set.spawn(async move {
             let _permit = sem.acquire().await.unwrap();
-            process_page(i, &url).await
+            (i, process_page(i, &url, &cfg).await)
         });
-
-        handles.push(handle);
     }
 
-    let mut success = 0;
-    let mut failed = 0;
+    let (mut success, mut failed) = (0usize, 0usize);
 
-    for (i, handle) in handles.into_iter().enumerate() {
-        match handle.await {
-            Ok(Ok((title, elapsed))) => {
-                println!("[{:3}] ✓ {} ({:.1}s)", i, title, elapsed);
+    while let Some(res) = set.join_next().await {
+        match res {
+            Ok((i, Ok((title, elapsed)))) => {
+                println!("[{i:3}] ✓ {title} ({elapsed:.1}s)");
                 success += 1;
             }
-            Ok(Err(e)) => {
-                println!("[{:3}] ✗ Error: {}", i, e);
+            Ok((i, Err(e))) => {
+                println!("[{i:3}] ✗ Error: {e}");
                 failed += 1;
             }
             Err(e) => {
-                println!("[{:3}] ✗ Panic: {}", i, e);
+                println!("[???] ✗ Panic: {e}");
                 failed += 1;
             }
         }
     }
 
     let total = start.elapsed();
-    println!("\nTotal: {:.2}s | Success: {} | Failed: {} | {:.2} pages/sec",
+    println!(
+        "\nTotal: {:.2}s | Success: {} | Failed: {} | {:.2} pages/sec",
         total.as_secs_f64(), success, failed,
-        NUM_PAGES as f64 / total.as_secs_f64());
+        NUM_PAGES as f64 / total.as_secs_f64()
+    );
 
     Ok(())
 }
 
-async fn process_page(id: usize, url: &str) -> Result<(String, f64)> {
+async fn process_page(id: usize, url: &str, cfg: &Config) -> Result<(String, f64)> {
     let start = Instant::now();
 
-    let target = CdpClient::create_tab("localhost", 9222, Some(url)).await?;
+    let target = CdpClient::create_tab(&cfg.host, cfg.port, None).await?;
     let ws_url = target.web_socket_debugger_url
-        .ok_or_else(|| cdp_protocol::CdpError::InvalidUrl("No WS URL".into()))?;
+        .ok_or_else(|| CdpError::InvalidUrl(format!("no WS URL for tab {id}")))?;
 
     let client = CdpClient::connect(&ws_url).await?;
     client.enable_domain("Page").await?;
     client.enable_domain("Runtime").await?;
+    client.set_viewport(cfg.viewport_width, cfg.viewport_height, false).await?;
+    client.navigate(url).await?;
 
     tokio::time::sleep(std::time::Duration::from_millis(2000)).await;
 
-    let title: String = client.eval("document.title").await
-        .unwrap_or_else(|_| "Unknown".to_string());
+    let title = client.eval("document.title").await.unwrap_or_else(|_| "Unknown".into());
 
-    client.screenshot_to_file(&format!("screenshots/page_{:03}.png", id)).await?;
+    client.full_page_screenshot_to_file(&format!("{}/page_{id:03}.png", cfg.screenshots_dir)).await?;
+    client.close().await?;
 
     Ok((title, start.elapsed().as_secs_f64()))
 }
 ```
 
 **Output:**
-```
+```plaintext
 === Industrial Scraping Demo ===
-Pages to process: 50
-Max concurrent: 10
+Pages to process: 100
+Max concurrent:   5
 
-[  0] ✓ Rust Programming Language (3.2s)
-[  1] ✓ Google (2.8s)
+[  2] ✓ Google (2.8s)
+[  0] ✓ Slishee - We solve puzzles (3.4s)
+[  1] ✓ Rust Programming Language (3.1s)
 ...
-[ 49] ✓ Hacker News (2.9s)
+[ 99] ✓ Planet Scale (4.2s)
 
-Total: 18.42s | Success: 50 | Failed: 0 | 2.71 pages/sec
+Total: 87.3s | Success: 97 | Failed: 3 | 1.15 pages/sec
 ```
 
 ---
@@ -934,8 +923,6 @@ Until then:
 - **WebDriver** for cross-browser standardization
 - **CDP** for Chrome power-user features
 
-Our Rust implementation gives you CDP's full power with ergonomic abstractions. Low-level when you need it, high-level when you don't.
-
 ---
 
 ## Resources
@@ -944,8 +931,4 @@ Our Rust implementation gives you CDP's full power with ergonomic abstractions. 
 - [CDP Protocol Viewer](https://chromedevtools.github.io/devtools-protocol/)
 - [Puppeteer Docs](https://pptr.dev/)
 - [Playwright Docs](https://playwright.dev/)
-- [Selenium BiDi](https://www.selenium.dev/documentation/webdriver/bidirectional/)
-
----
-
-*Built for engineers who need to understand the protocol, not just use a wrapper.*
+- [Selenium BiDi](https://www.selenium.dev/documentation/webdriver/bidi/)

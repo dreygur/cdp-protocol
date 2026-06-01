@@ -1,36 +1,56 @@
-use thiserror::Error;
+use std::fmt;
 
-#[derive(Error, Debug)]
+#[derive(Debug)]
 pub enum CdpError {
-    #[error("WebSocket error: {0}")]
-    WebSocket(#[from] tokio_tungstenite::tungstenite::Error),
-
-    #[error("HTTP error: {0}")]
-    Http(#[from] reqwest::Error),
-
-    #[error("JSON error: {0}")]
-    Json(#[from] serde_json::Error),
-
-    #[error("CDP protocol error: {code} - {message}")]
-    Protocol { code: i64, message: String },
-
-    #[error("Connection closed")]
-    ConnectionClosed,
-
-    #[error("Timeout waiting for response")]
-    Timeout,
-
-    #[error("No targets available")]
-    NoTargets,
-
-    #[error("Target not found: {0}")]
-    TargetNotFound(String),
-
-    #[error("Invalid URL: {0}")]
+    WebSocket(tokio_tungstenite::tungstenite::Error),
+    Http(reqwest::Error),
+    Json(serde_json::Error),
+    Io(std::io::Error),
     InvalidUrl(String),
+    Protocol(String),
+    Timeout,
+    NoTarget,
+}
 
-    #[error("Channel error: {0}")]
-    Channel(String),
+impl fmt::Display for CdpError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            CdpError::WebSocket(e) => write!(f, "WebSocket error: {e}"),
+            CdpError::Http(e) => write!(f, "HTTP error: {e}"),
+            CdpError::Json(e) => write!(f, "JSON error: {e}"),
+            CdpError::Io(e) => write!(f, "IO error: {e}"),
+            CdpError::InvalidUrl(s) => write!(f, "Invalid URL: {s}"),
+            CdpError::Protocol(s) => write!(f, "Protocol error: {s}"),
+            CdpError::Timeout => write!(f, "Operation timed out"),
+            CdpError::NoTarget => write!(f, "No page target available"),
+        }
+    }
+}
+
+impl std::error::Error for CdpError {}
+
+impl From<tokio_tungstenite::tungstenite::Error> for CdpError {
+    fn from(e: tokio_tungstenite::tungstenite::Error) -> Self {
+        CdpError::WebSocket(e)
+    }
+}
+
+impl From<reqwest::Error> for CdpError {
+    fn from(e: reqwest::Error) -> Self {
+        CdpError::Http(e)
+    }
+}
+
+impl From<serde_json::Error> for CdpError {
+    fn from(e: serde_json::Error) -> Self {
+        CdpError::Json(e)
+    }
+}
+
+impl From<std::io::Error> for CdpError {
+    fn from(e: std::io::Error) -> Self {
+        CdpError::Io(e)
+    }
 }
 
 pub type Result<T> = std::result::Result<T, CdpError>;

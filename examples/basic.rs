@@ -1,85 +1,69 @@
-//! Basic CDP client usage example
-//!
-//! Run Chrome with: google-chrome --remote-debugging-port=9222
-//! Then: cargo run --example basic
-
-use cdp_protocol::{CdpClient, Result};
-use tracing_subscriber;
+use cdp_protocol::{CdpClient, Config, Result};
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    tracing_subscriber::fmt::init();
+    let cfg = Config::default();
+    std::fs::create_dir_all(&cfg.screenshots_dir).ok();
 
-    println!("=== CDP Protocol Basic Example ===\n");
-
-    // Get browser version
-    println!("Fetching browser info...");
-    let version = CdpClient::get_version("localhost", 9222).await?;
+    // Discovery
+    let version = CdpClient::get_version(&cfg.host, cfg.port).await?;
     println!("Browser: {}", version.browser);
     println!("Protocol: {}", version.protocol_version);
 
-    // List targets
-    println!("\nAvailable targets:");
-    let targets = CdpClient::list_targets("localhost", 9222).await?;
+    let targets = CdpClient::list_targets(&cfg.host, cfg.port).await?;
+    println!("\nTargets ({}):", targets.len());
     for target in &targets {
         println!("  - {} [{}]: {}", target.target_type, target.id, target.title);
     }
 
-    // Connect to first page
-    println!("\nConnecting to browser...");
-    let client = CdpClient::connect_to_page("localhost", 9222).await?;
+    // Connect to first page target
+    let client = CdpClient::connect_to_page(&cfg.host, cfg.port).await?;
 
     // Enable domains
     client.enable_domain("Page").await?;
     client.enable_domain("Runtime").await?;
     client.enable_domain("DOM").await?;
-    println!("Domains enabled");
+    client.enable_domain("Network").await?;
+
+    // Set viewport
+    client.set_viewport(cfg.viewport_width, cfg.viewport_height, false).await?;
 
     // Navigate
-    println!("\nNavigating to example.com...");
     let nav = client.navigate("https://example.com").await?;
-    println!("Frame ID: {}", nav.frame_id);
+    println!("\nNavigated — frameId: {}", nav.frame_id);
 
-    // Wait for load
     tokio::time::sleep(std::time::Duration::from_secs(2)).await;
 
-    // Get page title
+    // JavaScript evaluation
     let title: String = client.eval("document.title").await?;
-    println!("Page title: {}", title);
+    println!("Title: {}", title);
 
-    // Get URL
-    let url: String = client.eval("window.location.href").await?;
-    println!("Current URL: {}", url);
-
-    // Execute JavaScript
-    println!("\nExecuting JavaScript...");
     let result = client.evaluate("1 + 2 * 3").await?;
-    println!("1 + 2 * 3 = {:?}", result.result.value);
+    println!("Math: {:?}", result.result.value);
 
-    // Get document info
+    let complex = client
+        .evaluate("(() => ({ width: window.innerWidth, height: window.innerHeight }))()")
+        .await?;
+    println!("Viewport: {:?}", complex.result.value);
+
+    // DOM operations
     let doc = client.get_document().await?;
-    println!("\nDocument root: {} (nodeId: {})", doc.node_name, doc.node_id);
+    println!("\nRoot node: {} (children: {:?})", doc.node_name, doc.child_node_count);
 
-    // Query selector
     let h1_id = client.query_selector(doc.node_id, "h1").await?;
     if h1_id > 0 {
         let html = client.get_outer_html(h1_id).await?;
-        println!("H1 element: {}", html);
+        println!("H1: {}", html);
     }
 
-    // Take screenshot
-    println!("\nCapturing screenshot...");
-    client.screenshot_to_file("example_screenshot.png").await?;
-    println!("Screenshot saved to example_screenshot.png");
+    // Screenshot
+    let path = format!("{}/example.png", cfg.screenshots_dir);
+    client.full_page_screenshot_to_file(&path).await?;
+    println!("\nScreenshot saved: {path}");
 
-    // Get cookies
+    // Cookies
     let cookies = client.get_cookies().await?;
-    println!("\nCookies: {} found", cookies.len());
+    println!("Cookies: {}", cookies.len());
 
-    // Get page text
-    let text: String = client.eval("document.body.innerText.substring(0, 200)").await?;
-    println!("\nPage text preview:\n{}", text);
-
-    println!("\n=== Done ===");
     Ok(())
 }

@@ -1,17 +1,25 @@
-//! Industrial scraping - parallel page processing
-//!
-//! Opens multiple tabs concurrently, navigates, and captures screenshots.
-
-use cdp_protocol::{CdpClient, Result};
+use cdp_protocol::{CdpClient, CdpError, Config, Result};
 use std::sync::Arc;
 use std::time::Instant;
 use tokio::sync::Semaphore;
+use tokio::task::JoinSet;
 
-const NUM_PAGES: usize = 50; // Number of concurrent pages
-const MAX_CONCURRENT: usize = 10; // Max concurrent connections
+const MAX_CONCURRENT: usize = 5;
 
-// Sites to scrape (will cycle through these)
 const URLS: &[&str] = &[
+    // --- replaced errored sites, slishee first ---
+    "https://slishee.com",
+    "https://www.ebay.com",           // was amazon (bot-blocked)
+    "https://bsky.app",               // was x.com (bot-blocked)
+    "https://arstechnica.com",        // was techcrunch (bot-blocked)
+    "https://sendgrid.com",           // was twilio (0-width)
+    "https://www.sqlite.org",         // was postgresql (0-width)
+    "https://mariadb.org",            // was mysql (0-width)
+    "https://opensearch.org",         // was elastic (0-width)
+    "https://helm.sh",                // was kubernetes (0-width)
+    "https://podman.io",              // was docker (0-width)
+    "https://www.kernel.org",         // was linuxfoundation (0-width)
+    // --- confirmed working ---
     "https://www.rust-lang.org",
     "https://www.google.com",
     "https://github.com",
@@ -22,103 +30,172 @@ const URLS: &[&str] = &[
     "https://docs.rs",
     "https://crates.io",
     "https://www.mozilla.org",
+    "https://www.apple.com",
+    "https://www.microsoft.com",
+    "https://www.netflix.com",
+    "https://www.linkedin.com",
+    "https://www.youtube.com",
+    "https://www.instagram.com",
+    "https://www.facebook.com",
+    "https://www.nytimes.com",
+    "https://www.bbc.com",
+    "https://www.cnn.com",
+    "https://www.theguardian.com",
+    "https://www.wired.com",
+    "https://medium.com",
+    "https://dev.to",
+    "https://hashnode.com",
+    "https://lobste.rs",
+    "https://www.npmjs.com",
+    "https://pypi.org",
+    "https://hub.docker.com",
+    "https://www.cloudflare.com",
+    "https://www.digitalocean.com",
+    "https://vercel.com",
+    "https://www.netlify.com",
+    "https://stripe.com",
+    "https://www.mongodb.com",
+    "https://redis.io",
+    "https://prometheus.io",
+    "https://grafana.com",
+    "https://www.gnome.org",
+    // --- new 50 ---
+    "https://www.kde.org",
+    "https://neovim.io",
+    "https://code.visualstudio.com",
+    "https://www.jetbrains.com",
+    "https://www.python.org",
+    "https://go.dev",
+    "https://www.scala-lang.org",
+    "https://www.haskell.org",
+    "https://elixir-lang.org",
+    "https://www.php.net",
+    "https://www.ruby-lang.org",
+    "https://nodejs.org",
+    "https://deno.com",
+    "https://bun.sh",
+    "https://svelte.dev",
+    "https://vuejs.org",
+    "https://react.dev",
+    "https://angular.dev",
+    "https://nextjs.org",
+    "https://astro.build",
+    "https://tailwindcss.com",
+    "https://supabase.com",
+    "https://neon.tech",
+    "https://www.nginx.com",
+    "https://traefik.io",
+    "https://about.gitlab.com",
+    "https://bitbucket.org",
+    "https://circleci.com",
+    "https://www.jenkins.io",
+    "https://www.ansible.com",
+    "https://aws.amazon.com",
+    "https://azure.microsoft.com",
+    "https://cloud.google.com",
+    "https://www.ibm.com",
+    "https://www.oracle.com",
+    "https://www.salesforce.com",
+    "https://www.shopify.com",
+    "https://www.dropbox.com",
+    "https://slack.com",
+    "https://zoom.us",
+    "https://www.notion.so",
+    "https://www.figma.com",
+    "https://linear.app",
+    "https://www.postman.com",
+    "https://insomnia.rest",
+    "https://about.sourcegraph.com",
+    "https://www.sonarsource.com",
+    "https://www.vim.org",
+    "https://www.gitkraken.com",
+    "https://planetscale.com",
 ];
+
+const NUM_PAGES: usize = URLS.len();
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    tracing_subscriber::fmt::init();
+    let cfg = Arc::new(Config::default());
+    std::fs::create_dir_all(&cfg.screenshots_dir).ok();
 
     println!("=== Industrial Scraping Demo ===");
-    println!("Pages to process: {}", NUM_PAGES);
-    println!("Max concurrent: {}", MAX_CONCURRENT);
-
-    // Create output directory
-    std::fs::create_dir_all("screenshots").ok();
+    println!("Pages to process: {NUM_PAGES}");
+    println!("Max concurrent:   {MAX_CONCURRENT}\n");
 
     let start = Instant::now();
-
-    // Semaphore to limit concurrency
     let semaphore = Arc::new(Semaphore::new(MAX_CONCURRENT));
-
-    // Spawn all tasks
-    let mut handles = Vec::with_capacity(NUM_PAGES);
+    let mut set = JoinSet::new();
 
     for i in 0..NUM_PAGES {
-        let url = URLS[i % URLS.len()].to_string();
+        let url = URLS[i].to_string();
         let sem = semaphore.clone();
+        let cfg = cfg.clone();
 
-        let handle = tokio::spawn(async move {
+        set.spawn(async move {
             let _permit = sem.acquire().await.unwrap();
-            process_page(i, &url).await
+            (i, process_page(i, &url, &cfg).await)
         });
-
-        handles.push(handle);
     }
 
-    // Collect results
-    let mut success = 0;
-    let mut failed = 0;
+    let mut success = 0usize;
+    let mut failed = 0usize;
 
-    for (i, handle) in handles.into_iter().enumerate() {
-        match handle.await {
-            Ok(Ok((title, elapsed))) => {
-                println!("[{:3}] ✓ {} ({:.1}s)", i, title, elapsed);
+    while let Some(res) = set.join_next().await {
+        match res {
+            Ok((i, Ok((title, elapsed)))) => {
+                println!("[{i:3}] ✓ {title} ({elapsed:.1}s)");
                 success += 1;
             }
-            Ok(Err(e)) => {
-                println!("[{:3}] ✗ Error: {}", i, e);
+            Ok((i, Err(e))) => {
+                println!("[{i:3}] ✗ Error: {e}");
                 failed += 1;
             }
             Err(e) => {
-                println!("[{:3}] ✗ Task panic: {}", i, e);
+                println!("[???] ✗ Panic: {e}");
                 failed += 1;
             }
         }
     }
 
-    let total_time = start.elapsed();
-
-    println!("\n=== Results ===");
-    println!("Total time: {:.2}s", total_time.as_secs_f64());
-    println!("Success: {}", success);
-    println!("Failed: {}", failed);
-    println!("Avg per page: {:.2}s", total_time.as_secs_f64() / NUM_PAGES as f64);
-    println!("Pages/second: {:.2}", NUM_PAGES as f64 / total_time.as_secs_f64());
-    println!("\nScreenshots saved to ./screenshots/");
+    let total = start.elapsed();
+    println!(
+        "\nTotal: {:.2}s | Success: {} | Failed: {} | {:.2} pages/sec",
+        total.as_secs_f64(),
+        success,
+        failed,
+        NUM_PAGES as f64 / total.as_secs_f64()
+    );
 
     Ok(())
 }
 
-async fn process_page(id: usize, url: &str) -> Result<(String, f64)> {
+async fn process_page(id: usize, url: &str, cfg: &Config) -> Result<(String, f64)> {
     let start = Instant::now();
 
-    // Create new tab
-    let target = CdpClient::create_tab("localhost", 9222, Some(url)).await?;
-
+    let target = CdpClient::create_tab(&cfg.host, cfg.port, None).await?;
     let ws_url = target
         .web_socket_debugger_url
-        .ok_or_else(|| cdp_protocol::CdpError::InvalidUrl("No WS URL".into()))?;
+        .ok_or_else(|| CdpError::InvalidUrl(format!("no WS URL for tab {id}")))?;
 
-    // Connect to the new tab
     let client = CdpClient::connect(&ws_url).await?;
-
-    // Enable domains
     client.enable_domain("Page").await?;
     client.enable_domain("Runtime").await?;
 
-    // Wait for page load
+    client.set_viewport(cfg.viewport_width, cfg.viewport_height, false).await?;
+    client.navigate(url).await?;
+
     tokio::time::sleep(std::time::Duration::from_millis(2000)).await;
 
-    // Get title
-    let title: String = client.eval("document.title").await.unwrap_or_else(|_| "Unknown".to_string());
+    let title = client
+        .eval("document.title")
+        .await
+        .unwrap_or_else(|_| "Unknown".into());
 
-    // Take screenshot
-    let screenshot_path = format!("screenshots/page_{:03}.png", id);
-    client.screenshot_to_file(&screenshot_path).await?;
+    let path = format!("{}/page_{id:03}.png", cfg.screenshots_dir);
+    client.full_page_screenshot_to_file(&path).await?;
 
-    // Close the tab (send Target.closeTarget via browser endpoint)
-    // For now we just let it be - tabs will close when Chrome restarts
+    client.close().await?;
 
-    let elapsed = start.elapsed().as_secs_f64();
-    Ok((title, elapsed))
+    Ok((title, start.elapsed().as_secs_f64()))
 }

@@ -1,183 +1,103 @@
-//! AI Agent browser control example
-//!
-//! This shows how an AI agent can control the browser using high-level actions.
-//! Actions can be specified as JSON, making it easy to integrate with LLMs.
-//!
-//! Run Chrome with: google-chrome --remote-debugging-port=9222
-//! Then: cargo run --example agent
-
-use cdp_protocol::{ActionBuilder, ActionResult, BrowserAction, BrowserAgent, Result};
-use tracing_subscriber;
+use cdp_protocol::{ActionBuilder, BrowserAction, BrowserAgent, Config, Result};
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    tracing_subscriber::fmt::init();
+    let cfg = Config::default();
+    std::fs::create_dir_all(&cfg.screenshots_dir).ok();
 
-    println!("=== AI Agent Browser Control Example ===\n");
+    let agent = BrowserAgent::connect_with_config(&cfg).await?;
 
-    // Connect agent to browser
-    println!("Connecting to browser...");
-    let agent = BrowserAgent::connect("localhost", 9222).await?;
-    println!("Connected!\n");
+    // --- Programmatic actions ---
+    println!("=== Programmatic actions ===");
 
-    // Example 1: Execute actions programmatically
-    println!("--- Example 1: Programmatic Actions ---");
-
-    let result = agent
+    let r = agent
         .execute(BrowserAction::Navigate {
             url: "https://example.com".to_string(),
         })
         .await;
-    print_result("Navigate", &result);
+    println!("Navigate: {}", r);
 
-    tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+    let r = agent.execute(BrowserAction::Wait { ms: 1500 }).await;
+    println!("Wait: {}", r);
 
-    let result = agent.execute(BrowserAction::GetTitle).await;
-    print_result("GetTitle", &result);
+    let r = agent.execute(BrowserAction::GetTitle).await;
+    println!("Title: {}", r);
 
-    let result = agent.execute(BrowserAction::GetUrl).await;
-    print_result("GetUrl", &result);
+    let r = agent.execute(BrowserAction::GetUrl).await;
+    println!("URL: {}", r);
 
-    let result = agent.execute(BrowserAction::GetText).await;
-    if let ActionResult::Success { data: Some(d), .. } = &result {
-        let text = d["text"].as_str().unwrap_or("");
-        println!("  Text preview: {}...", &text[..text.len().min(100)]);
-    }
+    // --- JSON dispatch (LLM tool calls) ---
+    println!("\n=== JSON dispatch ===");
 
-    let result = agent.execute(BrowserAction::GetLinks).await;
-    print_result("GetLinks", &result);
+    let r = agent
+        .execute_json(r#"{"action":"navigate","url":"https://www.rust-lang.org"}"#)
+        .await;
+    println!("Navigate: {}", r);
 
-    // Example 2: Execute actions from JSON (AI-friendly)
-    println!("\n--- Example 2: JSON Actions (AI Integration) ---");
+    let r = agent.execute_json(r#"{"action":"wait","ms":2000}"#).await;
+    println!("Wait: {}", r);
 
-    let json_actions = vec![
-        r#"{"action": "navigate", "url": "https://www.rust-lang.org"}"#,
-        r#"{"action": "wait", "ms": 2000}"#,
-        r#"{"action": "get_title"}"#,
-        r#"{"action": "screenshot", "path": "rust_lang.png"}"#,
-        r#"{"action": "evaluate", "expression": "document.querySelectorAll('a').length"}"#,
-    ];
+    let screenshot_path = format!("{}/rust-lang.png", cfg.screenshots_dir);
+    let r = agent
+        .execute_json(&format!(r#"{{"action":"screenshot","path":"{screenshot_path}"}}"#))
+        .await;
+    println!("Screenshot: {}", r);
 
-    for json in json_actions {
-        println!("\nAction JSON: {}", json);
-        let result = agent.execute_json(json).await;
-        print_result("Result", &result);
-    }
+    let r = agent.execute_json(r#"{"action":"get_title"}"#).await;
+    println!("Title: {}", r);
 
-    // Example 3: Action chaining with builder
-    println!("\n--- Example 3: Action Builder Chain ---");
+    let r = agent
+        .execute_json(r#"{"action":"evaluate","expression":"navigator.userAgent"}"#)
+        .await;
+    println!("UserAgent: {}", r);
 
+    // --- ActionBuilder (fluent chaining) ---
+    println!("\n=== ActionBuilder ===");
+
+    let search_screenshot = format!("{}/google-search.png", cfg.screenshots_dir);
     let actions = ActionBuilder::new()
         .navigate("https://www.google.com")
         .wait(1500)
-        .screenshot(Some("google.png"))
+        .fill("textarea[name='q'],input[name='q']", "Rust programming")
+        .press_key("Enter")
+        .wait(2000)
+        .screenshot(Some(&search_screenshot))
+        .get_title()
         .build();
 
-    println!("Executing {} actions...", actions.len());
     let results = agent.execute_many(actions).await;
-    for (i, result) in results.iter().enumerate() {
-        print_result(&format!("Action {}", i + 1), result);
+    for (i, r) in results.iter().enumerate() {
+        println!("[{i}] {r}");
     }
 
-    // Example 4: Search interaction
-    println!("\n--- Example 4: Search Interaction ---");
+    // --- Data extraction ---
+    println!("\n=== Data extraction ===");
 
-    let search_actions = vec![
-        BrowserAction::Navigate {
-            url: "https://duckduckgo.com".to_string(),
-        },
-        BrowserAction::Wait { ms: 1500 },
-        BrowserAction::Fill {
-            selector: "input[name='q']".to_string(),
-            value: "Rust programming language".to_string(),
-        },
-        BrowserAction::PressKey {
-            key: "Enter".to_string(),
-        },
-        BrowserAction::Wait { ms: 2000 },
-        BrowserAction::Screenshot {
-            path: Some("search_results.png".to_string()),
-        },
-        BrowserAction::GetTitle,
-    ];
-
-    for action in search_actions {
-        let result = agent.execute(action).await;
-        if !result.is_success() {
-            println!("Action failed: {:?}", result);
-            break;
-        }
-    }
-    println!("Search completed! Check search_results.png");
-
-    // Example 5: Element inspection
-    println!("\n--- Example 5: Element Inspection ---");
-
-    let result = agent
-        .execute(BrowserAction::Exists {
-            selector: "body".to_string(),
+    agent
+        .execute(BrowserAction::Navigate {
+            url: "https://example.com".to_string(),
         })
         .await;
-    print_result("Body exists", &result);
+    tokio::time::sleep(std::time::Duration::from_secs(1)).await;
 
-    let result = agent
-        .execute(BrowserAction::GetAttributes {
-            selector: "html".to_string(),
-        })
-        .await;
-    print_result("HTML attributes", &result);
-
-    // Example 6: Custom JavaScript
-    println!("\n--- Example 6: Custom JavaScript ---");
-
-    let result = agent
+    let r = agent
         .execute(BrowserAction::Evaluate {
             expression: r#"
-                (() => {
-                    const info = {
-                        viewport: {
-                            width: window.innerWidth,
-                            height: window.innerHeight
-                        },
-                        userAgent: navigator.userAgent,
-                        language: navigator.language,
-                        cookiesEnabled: navigator.cookieEnabled,
-                        platform: navigator.platform
-                    };
-                    return info;
-                })()
+                (() => ({
+                    viewport:  { width: window.innerWidth, height: window.innerHeight },
+                    userAgent: navigator.userAgent,
+                    language:  navigator.language,
+                    cookies:   navigator.cookieEnabled,
+                    platform:  navigator.platform,
+                }))()
             "#
             .to_string(),
         })
         .await;
-    print_result("Browser info", &result);
+    println!("Page info: {}", r);
 
-    println!("\n=== Demo Complete ===");
-    println!("\nGenerated files:");
-    println!("  - rust_lang.png");
-    println!("  - google.png");
-    println!("  - search_results.png");
+    let r = agent.execute(BrowserAction::GetLinks).await;
+    println!("Links: {}", r);
 
     Ok(())
-}
-
-fn print_result(name: &str, result: &ActionResult) {
-    match result {
-        ActionResult::Success { data, message } => {
-            print!("  ✓ {}", name);
-            if let Some(msg) = message {
-                print!(": {}", msg);
-            }
-            if let Some(d) = data {
-                let json = serde_json::to_string(d).unwrap_or_default();
-                if json.len() < 100 {
-                    print!(" -> {}", json);
-                }
-            }
-            println!();
-        }
-        ActionResult::Error { message } => {
-            println!("  ✗ {}: {}", name, message);
-        }
-    }
 }

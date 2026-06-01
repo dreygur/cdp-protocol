@@ -4,6 +4,15 @@ version = "0.1.0"
 edition = "2021"
 description = "Chrome DevTools Protocol client for AI agent browser control"
 
+[[example]]
+name = "basic"
+
+[[example]]
+name = "agent"
+
+[[example]]
+name = "industrial"
+
 [dependencies]
 tokio = { version = "1", features = ["full"] }
 tokio-tungstenite = { version = "0.21", features = ["native-tls"] }
@@ -11,20 +20,5 @@ futures-util = "0.3"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 reqwest = { version = "0.11", features = ["json"] }
-thiserror = "1"
-tracing = "0.1"
-tracing-subscriber = "0.3"
 base64 = "0.21"
-url = "2"
-
-[[example]]
-name = "basic"
-path = "examples/basic.rs"
-
-[[example]]
-name = "agent"
-path = "examples/agent.rs"
-
-[[example]]
-name = "industrial"
-path = "examples/industrial.rs"
+tracing = "0.1"
