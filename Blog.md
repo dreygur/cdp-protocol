@@ -561,7 +561,7 @@ Selenium 4 BiDi:
 
 ## Our CDP Implementation
 
-We built a production-ready Rust CDP client with two abstraction layers.
+We built a production-ready Rust CDP client with two abstraction layers. Source: [github.com/dreygur/cdp-protocol](https://github.com/dreygur/cdp-protocol)
 
 ### Project Structure
 
@@ -927,6 +927,7 @@ Until then:
 
 ## Resources
 
+- [cdp-protocol on GitHub](https://github.com/dreygur/cdp-protocol)
 - [W3C WebDriver Spec](https://www.w3.org/TR/webdriver2/)
 - [CDP Protocol Viewer](https://chromedevtools.github.io/devtools-protocol/)
 - [Puppeteer Docs](https://pptr.dev/)
