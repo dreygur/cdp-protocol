@@ -133,7 +133,7 @@ async fn main() -> Result<()> {
         let cfg = cfg.clone();
 
         set.spawn(async move {
-            let _permit = sem.acquire().await.unwrap();
+            let _permit = sem.acquire().await.expect("semaphore closed");
             (i, process_page(i, &url, &cfg).await)
         });
     }

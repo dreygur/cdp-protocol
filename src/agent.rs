@@ -5,6 +5,10 @@ use crate::client::CdpClient;
 use crate::config::Config;
 use crate::error::{CdpError, Result};
 
+fn quote(s: &str) -> String {
+    serde_json::to_string(s).unwrap_or_else(|_| format!("\"{}\"", s.replace('"', "\\\"")))
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum BrowserAction {
     Navigate { url: String },
@@ -115,7 +119,7 @@ impl BrowserAgent {
                 if let Some(sel) = selector {
                     self.client.eval(&format!(
                         "document.querySelector({})?.click()",
-                        serde_json::to_string(&sel).unwrap()
+                        quote(&sel)
                     )).await?;
                 } else if let (Some(cx), Some(cy)) = (x, y) {
                     for event_type in ["mousePressed", "mouseReleased"] {
@@ -134,7 +138,7 @@ impl BrowserAgent {
                 if let Some(sel) = selector {
                     self.client.eval(&format!(
                         "document.querySelector({})?.focus()",
-                        serde_json::to_string(&sel).unwrap()
+                        quote(&sel)
                     )).await?;
                 }
                 self.client.send_command("Input.insertText", json!({ "text": text })).await?;
@@ -151,8 +155,8 @@ impl BrowserAgent {
                         el.dispatchEvent(new Event('input', {{bubbles:true}})); \
                         el.dispatchEvent(new Event('change', {{bubbles:true}})); \
                     }})({})",
-                    serde_json::to_string(&value).unwrap(),
-                    serde_json::to_string(&selector).unwrap(),
+                    quote(&value),
+                    quote(&selector),
                 )).await?;
                 Ok(json!(null))
             }
@@ -161,7 +165,7 @@ impl BrowserAgent {
                 let sel = selector.as_deref().unwrap_or("form");
                 self.client.eval(&format!(
                     "document.querySelector({})?.submit()",
-                    serde_json::to_string(sel).unwrap()
+                    quote(sel)
                 )).await?;
                 Ok(json!(null))
             }
@@ -186,7 +190,7 @@ impl BrowserAgent {
                 let expr = match selector {
                     Some(sel) => format!(
                         "document.querySelector({})?.innerHTML",
-                        serde_json::to_string(&sel).unwrap()
+                        quote(&sel)
                     ),
                     None => "document.documentElement.outerHTML".into(),
                 };
@@ -210,7 +214,7 @@ impl BrowserAgent {
                         for (let a of el.attributes) attrs[a.name] = a.value; \
                         return attrs; \
                     }})({})",
-                    serde_json::to_string(&selector).unwrap()
+                    quote(&selector)
                 )).await?;
                 Ok(ev.result.value.unwrap_or(json!(null)))
             }
@@ -218,7 +222,7 @@ impl BrowserAgent {
             BrowserAction::Exists { selector } => {
                 let ev = self.client.evaluate(&format!(
                     "!!document.querySelector({})",
-                    serde_json::to_string(&selector).unwrap()
+                    quote(&selector)
                 )).await?;
                 Ok(ev.result.value.unwrap_or(json!(false)))
             }
@@ -246,7 +250,7 @@ impl BrowserAgent {
                     + std::time::Duration::from_millis(timeout_ms);
                 let expr = format!(
                     "!!document.querySelector({})",
-                    serde_json::to_string(&selector).unwrap()
+                    quote(&selector)
                 );
                 loop {
                     let ev = self.client.evaluate(&expr).await?;
