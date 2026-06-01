@@ -53,7 +53,7 @@ async fn main() -> cdp_protocol::Result<()> {
 No async runtime needed — each client owns its own tokio runtime internally.
 
 ```rust
-use cdp_protocol::blocking::{BrowserAgent, CdpClient};
+use cdp_protocol::blocking::BrowserAgent;
 use cdp_protocol::{BrowserAction, Config};
 
 fn main() -> cdp_protocol::Result<()> {
@@ -186,6 +186,39 @@ client.set_geolocation(37.7749, -122.4194, 10.0).await?;
 client.set_offline(true).await?;
 ```
 
+### Cluster (puppeteer-cluster style)
+
+Pre-creates a pool of browser tabs and distributes tasks across them with retries. Workers are reused between tasks — no create/close overhead per task.
+
+```rust
+use cdp_protocol::cluster::{Cluster, ClusterConfig};
+use cdp_protocol::Config;
+
+let cluster = Cluster::new(ClusterConfig {
+    concurrency: 5,
+    retries: 2,
+    monitor: true,
+    ..ClusterConfig::from(Config::default())
+}).await?;
+
+let results = cluster.run(urls, |client, url| async move {
+    client.navigate_and_wait(&url, 15_000).await?;
+    let title = client.eval("document.title").await?;
+    client.full_page_screenshot_to_file(&format!("screenshots/{}.png", url)).await?;
+    Ok(title)
+}).await;
+
+cluster.close().await;
+```
+
+`ClusterConfig` fields:
+
+| Field | Default | Description |
+|-------|---------|-------------|
+| `concurrency` | `5` | number of worker tabs |
+| `retries` | `2` | retries per task before failure |
+| `monitor` | `false` | print per-task timing |
+
 ## Config
 
 `Config::default()` sets:
@@ -238,7 +271,8 @@ RUST_LOG=debug cargo run --example basic
 ```bash
 cargo run --example basic        # low-level CdpClient
 cargo run --example agent        # BrowserAgent + ActionBuilder
-cargo run --example industrial   # 100 pages in parallel
+cargo run --example industrial   # 100 pages in parallel with JoinSet
+cargo run --example cluster      # worker pool with retries
 ```
 
 ## Project Structure
@@ -248,6 +282,7 @@ src/
 ├── lib.rs          # public exports
 ├── client.rs       # CDP WebSocket client, event system
 ├── agent.rs        # high-level agent, BrowserAction enum, ActionBuilder
+├── cluster.rs      # worker pool (Cluster, ClusterConfig)
 ├── blocking.rs     # synchronous wrappers (feature = "blocking")
 ├── network.rs      # network methods (cookies, headers, interception)
 ├── page.rs         # page/emulation/DOM methods (PDF, user agent, geolocation)
@@ -259,6 +294,7 @@ examples/
 ├── basic.rs        # low-level usage
 ├── agent.rs        # agent + JSON dispatch + builder
 ├── industrial.rs   # parallel scraping with JoinSet
+├── cluster.rs      # worker pool with retries
 └── common/
     └── logging.rs  # shared tracing init
 ```
