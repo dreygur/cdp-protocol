@@ -7,6 +7,9 @@ authors = ["Rakibul Yeasin <ryeasin03@gmail.com>"]
 license = "MIT"
 repository = "https://github.com/dreygur/cdp-protocol"
 
+[features]
+blocking = []
+
 [[example]]
 name = "basic"
 

@@ -6,6 +6,9 @@ pub mod page;
 pub mod types;
 pub mod error;
 
+#[cfg(feature = "blocking")]
+pub mod blocking;
+
 pub use client::CdpClient;
 pub use agent::{ActionBuilder, ActionResult, BrowserAction, BrowserAgent};
 pub use config::Config;
