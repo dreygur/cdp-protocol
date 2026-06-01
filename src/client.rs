@@ -140,7 +140,7 @@ impl CdpClient {
     }
 
     pub async fn close(&self) -> Result<()> {
-        // Ignore errors — connection drops immediately after the tab closes
+        // Ignore errors, connection drops immediately after the tab closes
         let _ = self.send_command("Page.close", json!({})).await;
         Ok(())
     }

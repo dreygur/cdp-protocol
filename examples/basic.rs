@@ -30,7 +30,7 @@ async fn main() -> Result<()> {
 
     // Navigate
     let nav = client.navigate("https://example.com").await?;
-    println!("\nNavigated — frameId: {}", nav.frame_id);
+    println!("\nNavigated, frameId: {}", nav.frame_id);
 
     tokio::time::sleep(std::time::Duration::from_secs(2)).await;
 
