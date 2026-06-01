@@ -301,5 +301,9 @@ examples/
 
 ## Resources
 
-- [CDP Protocol Reference](https://chromedevtools.github.io/devtools-protocol/)
 - [Blog: CDP vs WebDriver deep dive](https://dev.to/dreygur/browser-automation-protocols-cdp-vs-webdriver-deep-dive-5bmn)
+- [CDP Protocol Viewer](https://chromedevtools.github.io/devtools-protocol/)
+- [W3C WebDriver Spec](https://www.w3.org/TR/webdriver2/)
+- [Puppeteer Docs](https://pptr.dev/)
+- [Playwright Docs](https://playwright.dev/)
+- [Selenium BiDi](https://www.selenium.dev/documentation/webdriver/bidi/)
