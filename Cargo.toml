@@ -19,6 +19,9 @@ name = "agent"
 [[example]]
 name = "industrial"
 
+[[example]]
+name = "cluster"
+
 [dependencies]
 tokio = { version = "1", features = ["full"] }
 tokio-tungstenite = { version = "0.21", features = ["native-tls"] }

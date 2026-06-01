@@ -1,5 +1,6 @@
 pub mod client;
 pub mod agent;
+pub mod cluster;
 pub mod config;
 pub mod network;
 pub mod page;
