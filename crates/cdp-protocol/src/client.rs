@@ -229,11 +229,17 @@ impl CdpClient {
         Ok(serde_json::from_value(root)?)
     }
 
-    pub async fn query_selector(&self, node_id: i64, selector: &str) -> Result<i64> {
+    /// Returns the matched `nodeId`, or `None` when nothing matches.
+    /// CDP reports a missing match as `nodeId` 0; this surfaces that as `None`
+    /// rather than a node id that looks valid.
+    pub async fn query_selector(&self, node_id: i64, selector: &str) -> Result<Option<i64>> {
         let result = self
             .send_command("DOM.querySelector", json!({ "nodeId": node_id, "selector": selector }))
             .await?;
-        Ok(result["nodeId"].as_i64().unwrap_or(0))
+        Ok(match result["nodeId"].as_i64() {
+            Some(id) if id > 0 => Some(id),
+            _ => None,
+        })
     }
 
     pub async fn get_outer_html(&self, node_id: i64) -> Result<String> {
@@ -299,7 +305,7 @@ impl CdpClient {
 
     pub async fn get_cookies(&self) -> Result<Vec<Cookie>> {
         let result = self.send_command("Network.getCookies", json!({})).await?;
-        Ok(serde_json::from_value(result["cookies"].clone()).unwrap_or_default())
+        Ok(serde_json::from_value(result["cookies"].clone())?)
     }
 
     pub async fn get_version(host: &str, port: u16) -> Result<BrowserVersion> {

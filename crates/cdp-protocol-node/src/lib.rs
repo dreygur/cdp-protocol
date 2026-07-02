@@ -202,9 +202,10 @@ impl CdpClient {
             .map_err(to_napi)
     }
 
-    /// `DOM.querySelector` from the document root; returns the matched nodeId (0 if none).
+    /// `DOM.querySelector` from the document root; returns the matched nodeId,
+    /// or `null` when nothing matches.
     #[napi]
-    pub async fn query_selector(&self, selector: String) -> Result<i64> {
+    pub async fn query_selector(&self, selector: String) -> Result<Option<i64>> {
         let inner = self.inner.clone();
         let doc = inner.get_document().await.map_err(to_napi)?;
         inner

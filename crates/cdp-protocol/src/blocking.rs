@@ -77,7 +77,7 @@ impl CdpClient {
         self.rt.block_on(self.inner.get_document())
     }
 
-    pub fn query_selector(&self, node_id: i64, selector: &str) -> Result<i64> {
+    pub fn query_selector(&self, node_id: i64, selector: &str) -> Result<Option<i64>> {
         self.rt.block_on(self.inner.query_selector(node_id, selector))
     }
 

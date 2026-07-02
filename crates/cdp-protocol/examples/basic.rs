@@ -55,8 +55,7 @@ async fn main() -> Result<()> {
     let doc = client.get_document().await?;
     println!("\nRoot node: {} (children: {:?})", doc.node_name, doc.child_node_count);
 
-    let h1_id = client.query_selector(doc.node_id, "h1").await?;
-    if h1_id > 0 {
+    if let Some(h1_id) = client.query_selector(doc.node_id, "h1").await? {
         let html = client.get_outer_html(h1_id).await?;
         println!("H1: {}", html);
     }
