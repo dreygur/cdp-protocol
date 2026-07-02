@@ -3,14 +3,14 @@ name: node-bindings
 on:
   push:
     branches: [main]
-    paths: ['bindings/node/**', 'src/**', 'Cargo.toml', '.github/workflows/node-bindings.yml']
+    paths: ['crates/**', 'Cargo.toml', '.github/workflows/node-bindings.yml']
     tags: ['node-v*']
   pull_request:
-    paths: ['bindings/node/**', 'src/**', 'Cargo.toml']
+    paths: ['crates/**', 'Cargo.toml']
 
 defaults:
   run:
-    working-directory: bindings/node
+    working-directory: crates/cdp-protocol-node
 
 jobs:
   build:
@@ -46,7 +46,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: bindings-${{ matrix.target }}
-          path: bindings/node/*.node
+          path: crates/cdp-protocol-node/*.node
 
   publish:
     name: publish to npm
@@ -62,7 +62,7 @@ jobs:
       - run: npm ci
       - uses: actions/download-artifact@v4
         with:
-          path: bindings/node/artifacts
+          path: crates/cdp-protocol-node/artifacts
       - name: Move prebuilds into per-platform npm dirs
         run: npx napi artifacts --dir artifacts
       - run: npx napi prepublish -t npm --skip-gh-release
