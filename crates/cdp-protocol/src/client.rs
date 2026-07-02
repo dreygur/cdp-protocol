@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
+use std::time::Duration;
 
 use base64::Engine;
 use futures_util::{SinkExt, StreamExt};
@@ -14,11 +15,16 @@ use crate::types::*;
 
 type PendingMap = Arc<Mutex<HashMap<u64, oneshot::Sender<Result<Value>>>>>;
 
+/// Default per-command timeout, in milliseconds. Override with
+/// [`CdpClient::set_command_timeout`]. A value of `0` disables the timeout.
+const DEFAULT_COMMAND_TIMEOUT_MS: u64 = 30_000;
+
 pub struct CdpClient {
     tx: tokio::sync::mpsc::UnboundedSender<Message>,
     pending: PendingMap,
     next_id: Arc<AtomicU64>,
     events_tx: broadcast::Sender<(String, Value)>,
+    command_timeout_ms: Arc<AtomicU64>,
 }
 
 impl CdpClient {
@@ -88,7 +94,25 @@ impl CdpClient {
             }
         });
 
-        Ok(CdpClient { tx, pending, next_id: Arc::new(AtomicU64::new(1)), events_tx })
+        Ok(CdpClient {
+            tx,
+            pending,
+            next_id: Arc::new(AtomicU64::new(1)),
+            events_tx,
+            command_timeout_ms: Arc::new(AtomicU64::new(DEFAULT_COMMAND_TIMEOUT_MS)),
+        })
+    }
+
+    /// Set the per-command timeout applied to every [`send_command`](Self::send_command)
+    /// call. Passing a zero duration disables the timeout (commands wait indefinitely).
+    pub fn set_command_timeout(&self, timeout: Duration) {
+        let ms = u64::try_from(timeout.as_millis()).unwrap_or(u64::MAX);
+        self.command_timeout_ms.store(ms, Ordering::Relaxed);
+    }
+
+    /// The current per-command timeout.
+    pub fn command_timeout(&self) -> Duration {
+        Duration::from_millis(self.command_timeout_ms.load(Ordering::Relaxed))
     }
 
     pub(crate) async fn send_command(&self, method: &str, params: Value) -> Result<Value> {
@@ -98,13 +122,34 @@ impl CdpClient {
 
         self.pending.lock().await.insert(id, tx);
 
-        self.tx
-            .send(Message::Text(
-                json!({ "id": id, "method": method, "params": params }).to_string(),
-            ))
-            .map_err(|e| CdpError::Protocol(e.to_string()))?;
+        if let Err(e) = self.tx.send(Message::Text(
+            json!({ "id": id, "method": method, "params": params }).to_string(),
+        )) {
+            // Writer task is gone; don't leave a dangling entry in `pending`.
+            self.pending.lock().await.remove(&id);
+            return Err(CdpError::Protocol(e.to_string()));
+        }
 
-        rx.await.map_err(|_| CdpError::Protocol("response channel closed".into()))?
+        let closed = || CdpError::Protocol("response channel closed".into());
+
+        let timeout_ms = self.command_timeout_ms.load(Ordering::Relaxed);
+        if timeout_ms == 0 {
+            return match rx.await {
+                Ok(outcome) => outcome,
+                Err(_) => Err(closed()),
+            };
+        }
+
+        match tokio::time::timeout(Duration::from_millis(timeout_ms), rx).await {
+            Ok(Ok(outcome)) => outcome,
+            Ok(Err(_)) => Err(closed()),
+            Err(_) => {
+                // Timed out waiting for a reply: drop the pending sender so the
+                // map doesn't grow unbounded for commands the browser never answers.
+                self.pending.lock().await.remove(&id);
+                Err(CdpError::Timeout)
+            }
+        }
     }
 
     pub fn subscribe_events(&self) -> broadcast::Receiver<(String, Value)> {
