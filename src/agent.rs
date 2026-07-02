@@ -85,6 +85,16 @@ impl BrowserAgent {
         Ok(agent)
     }
 
+    /// Wrap an already-connected client (domains are the caller's responsibility).
+    pub fn from_client(client: CdpClient) -> Self {
+        BrowserAgent { client }
+    }
+
+    /// Close the underlying tab.
+    pub async fn close(&self) -> Result<()> {
+        self.client.close().await
+    }
+
     pub fn capture_console(&self) -> broadcast::Receiver<ConsoleMessage> {
         let (tx, rx) = broadcast::channel(64);
         let mut events = self.client.subscribe_events();

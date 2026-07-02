@@ -275,6 +275,24 @@ cargo run --example industrial   # 100 pages in parallel with JoinSet
 cargo run --example cluster      # worker pool with retries
 ```
 
+## Node / Deno / Bun
+
+The same engine ships as an npm package via [napi-rs](https://napi.rs) bindings
+in [`bindings/node`](bindings/node). Native Rust does the CDP work; JS gets
+Promises and TypeScript types. Works in Node, Bun, and Deno (`npm:` specifier).
+
+```js
+import { BrowserAgent, Cluster } from 'cdp-protocol'
+
+const agent = await BrowserAgent.connect('127.0.0.1', 9222)
+await agent.navigate('https://example.com')
+console.log((await agent.getTitle()).value)
+await agent.close()
+```
+
+`CdpClient` (low-level), `BrowserAgent` (actions), and `Cluster` (worker pool)
+all map 1:1 to the Rust API. See [`bindings/node/README.md`](bindings/node/README.md).
+
 ## Project Structure
 
 ```
@@ -297,6 +315,9 @@ examples/
 ├── cluster.rs      # worker pool with retries
 └── common/
     └── logging.rs  # shared tracing init
+
+bindings/
+└── node/           # napi-rs bindings: npm package for Node/Deno/Bun
 ```
 
 ## Resources

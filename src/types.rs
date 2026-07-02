@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct BrowserVersion {
     #[serde(rename = "Browser")]
     pub browser: String,
@@ -11,7 +11,7 @@ pub struct BrowserVersion {
     pub web_socket_debugger_url: Option<String>,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct Target {
     pub id: String,
     #[serde(rename = "type")]
@@ -22,7 +22,7 @@ pub struct Target {
     pub web_socket_debugger_url: Option<String>,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct NavigationResult {
     #[serde(rename = "frameId")]
     pub frame_id: String,

@@ -1,0 +1,19 @@
+[package]
+name = "cdp-protocol-node"
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+description = "Node/Deno/Bun bindings for cdp-protocol (Chrome DevTools Protocol client)"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+cdp-protocol = { path = "../.." }
+napi = { version = "2", default-features = false, features = ["napi6", "async", "serde-json"] }
+napi-derive = "2"
+serde_json = "1"
+tokio = { version = "1", features = ["rt-multi-thread", "sync"] }
+
+[build-dependencies]
+napi-build = "2"
