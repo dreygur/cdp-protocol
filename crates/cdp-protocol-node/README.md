@@ -22,12 +22,25 @@ import { CdpClient } from 'npm:cdp-protocol'   // Deno
 ```
 
 Rust snake_case maps to JS camelCase automatically (`connect_to_page` →
-`connectToPage`). Native addon per platform is resolved at runtime; all three
-runtimes load the same `.node` via Node-API.
+`connectToPage`). The per-platform native addon is resolved at runtime.
+
+Runtime support (all load the same `.node` via Node-API):
+
+- **Node** ≥ 16  fully tested (`npm run test`, `npm run load-test`).
+- **Deno** 2.x  the native binding loads. Deno's static CJS analysis does not
+  see the addon's dynamically-assigned exports, so use `createRequire` (or the
+  `npm:` specifier) rather than a static named `import`:
+  ```ts
+  import { createRequire } from 'node:module'
+  const require = createRequire(import.meta.url)
+  const { CdpClient } = require('cdp-protocol')
+  ```
+- **Bun**  supports Node-API and should load the same addon; not yet verified
+  locally.
 
 ## Three classes
 
-### `CdpClient`  low-level, 1:1 with the CDP domains
+### `CdpClient`  low-level CDP client
 
 ```js
 import { CdpClient } from 'cdp-protocol'
@@ -44,10 +57,25 @@ await client.close()
 ```
 
 Statics: `connect(wsUrl)`, `connectToPage(host, port)`, `getVersion`,
-`listTargets`, `createTab`. Instance: `enableDomain`, `navigate`,
-`navigateAndWait`, `eval`, `evaluate`, `waitForEvent`, `querySelector`,
-`getOuterHtml`, `screenshot(ToFile)`, `fullPageScreenshot(ToFile)`,
-`setViewport`, `getCookies`, `close`.
+`listTargets`, `createTab`.
+
+Instance methods, by area:
+
+- **Navigation / eval**: `enableDomain`, `navigate`, `navigateAndWait`, `eval`,
+  `evaluate`, `waitForEvent`, `callFunctionOn`.
+- **DOM**: `getDocument`, `querySelector`, `getOuterHtml`, `setAttribute`,
+  `setOuterHtml`, `removeNode`.
+- **Capture**: `screenshot`, `screenshotToFile`, `fullPageScreenshot`,
+  `fullPageScreenshotToFile`, `printToPdf`, `setViewport`.
+- **Network**: `getCookies`, `setCookie`, `deleteCookies`, `setExtraHeaders`,
+  `blockUrls`, `getResponseBody`, `interceptRequests`, `continueRequest`,
+  `fulfillRequest`.
+- **Page / emulation**: `setContent`, `addInitScript`, `removeInitScript`,
+  `setUserAgent`, `setGeolocation`, `setOffline`.
+- `close`.
+
+This tracks the Rust `CdpClient` surface (client + `network` + `page` modules).
+The Rust-only `blocking` feature has no JS equivalent (JS is async already).
 
 ### `BrowserAgent`  high-level actions (auto-enables Page/Runtime/DOM/Network)
 
@@ -96,8 +124,30 @@ const tasks = await Promise.all(
 await cluster.close()
 ```
 
-A worker is checked out per `execute` call, capped by `concurrency`; a failed
-batch retries up to `retries` times.
+A worker is checked out per `execute` call, capped by `concurrency`; the batch
+aborts on the first failed action and the whole batch retries up to `retries`
+times. If any worker fails to start, `create` closes the tabs it already opened
+before throwing (no leaked tabs).
+
+> Note: this `Cluster` is a purpose-built, action-batch pool for JS. It is not a
+> binding of the Rust `cdp_protocol::cluster::Cluster`, whose generic
+> closure-based API cannot cross the FFI boundary. Behavior is intentionally
+> batch-oriented rather than a 1:1 port.
+
+## Errors
+
+Rejections are `Error` objects whose `message` is prefixed with a stable code:
+
+```js
+try {
+  await client.navigateAndWait(url, 1000)
+} catch (err) {
+  if (err.message.startsWith('[TIMEOUT]')) retry()
+}
+```
+
+Codes: `[WEBSOCKET]` `[HTTP]` `[JSON]` `[IO]` `[INVALID_URL]` `[PROTOCOL]`
+`[TIMEOUT]` `[NO_TARGET]` (mapped from the Rust `CdpError` variants).
 
 ## Examples
 

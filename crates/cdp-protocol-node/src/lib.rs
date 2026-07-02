@@ -7,6 +7,7 @@
 //! - [`BrowserAgent`]  high-level action runner (navigate/click/fill/...).
 //! - [`Cluster`]  fixed-size pool of agents for concurrent work.
 
+use std::collections::HashMap;
 use std::sync::Arc;
 
 use napi::bindgen_prelude::{Buffer, Error, Result};
@@ -18,8 +19,25 @@ use cdp_protocol::{
     BrowserAgent as CoreAgent, CdpClient as CoreClient, CdpError, Config as CoreConfig,
 };
 
+/// Stable machine-readable code for a `CdpError`, surfaced to JS.
+///
+/// The thrown `Error.message` is `"[CODE] human message"`, so callers can
+/// branch on kind, e.g. `if (err.message.startsWith('[TIMEOUT]'))`.
+fn error_code(e: &CdpError) -> &'static str {
+    match e {
+        CdpError::WebSocket(_) => "WEBSOCKET",
+        CdpError::Http(_) => "HTTP",
+        CdpError::Json(_) => "JSON",
+        CdpError::Io(_) => "IO",
+        CdpError::InvalidUrl(_) => "INVALID_URL",
+        CdpError::Protocol(_) => "PROTOCOL",
+        CdpError::Timeout => "TIMEOUT",
+        CdpError::NoTarget => "NO_TARGET",
+    }
+}
+
 fn to_napi(e: CdpError) -> Error {
-    Error::from_reason(e.to_string())
+    Error::from_reason(format!("[{}] {e}", error_code(&e)))
 }
 
 fn json_err(e: serde_json::Error) -> Error {
@@ -240,12 +258,188 @@ impl CdpClient {
         inner.set_viewport(width, height, mobile).await.map_err(to_napi)
     }
 
+    /// `DOM.getDocument` root node.
+    #[napi]
+    pub async fn get_document(&self) -> Result<Value> {
+        let inner = self.inner.clone();
+        let doc = inner.get_document().await.map_err(to_napi)?;
+        serde_json::to_value(doc).map_err(json_err)
+    }
+
+    // --- Network ---------------------------------------------------------
+
     /// `Network.getCookies`.
     #[napi]
     pub async fn get_cookies(&self) -> Result<Value> {
         let inner = self.inner.clone();
         let cookies = inner.get_cookies().await.map_err(to_napi)?;
         serde_json::to_value(cookies).map_err(json_err)
+    }
+
+    /// `Network.setCookie`.
+    #[napi]
+    pub async fn set_cookie(
+        &self,
+        name: String,
+        value: String,
+        url: Option<String>,
+        domain: Option<String>,
+        path: Option<String>,
+    ) -> Result<()> {
+        let inner = self.inner.clone();
+        inner
+            .set_cookie(&name, &value, url.as_deref(), domain.as_deref(), path.as_deref())
+            .await
+            .map_err(to_napi)
+    }
+
+    /// `Network.deleteCookies`.
+    #[napi]
+    pub async fn delete_cookies(&self, name: String, url: Option<String>) -> Result<()> {
+        let inner = self.inner.clone();
+        inner.delete_cookies(&name, url.as_deref()).await.map_err(to_napi)
+    }
+
+    /// `Network.setExtraHTTPHeaders`.
+    #[napi]
+    pub async fn set_extra_headers(&self, headers: HashMap<String, String>) -> Result<()> {
+        let inner = self.inner.clone();
+        inner.set_extra_headers(&headers).await.map_err(to_napi)
+    }
+
+    /// `Network.setBlockedURLs`.
+    #[napi]
+    pub async fn block_urls(&self, patterns: Vec<String>) -> Result<()> {
+        let inner = self.inner.clone();
+        let refs: Vec<&str> = patterns.iter().map(String::as_str).collect();
+        inner.block_urls(&refs).await.map_err(to_napi)
+    }
+
+    /// `Network.getResponseBody` (base64 payloads are decoded to text).
+    #[napi]
+    pub async fn get_response_body(&self, request_id: String) -> Result<String> {
+        let inner = self.inner.clone();
+        inner.get_response_body(&request_id).await.map_err(to_napi)
+    }
+
+    /// Enable `Fetch` request interception for the given URL patterns.
+    #[napi]
+    pub async fn intercept_requests(&self, url_patterns: Vec<String>) -> Result<()> {
+        let inner = self.inner.clone();
+        let refs: Vec<&str> = url_patterns.iter().map(String::as_str).collect();
+        inner.intercept_requests(&refs).await.map_err(to_napi)
+    }
+
+    /// `Fetch.continueRequest`.
+    #[napi]
+    pub async fn continue_request(&self, request_id: String) -> Result<()> {
+        let inner = self.inner.clone();
+        inner.continue_request(&request_id).await.map_err(to_napi)
+    }
+
+    /// `Fetch.fulfillRequest` with a canned response body.
+    #[napi]
+    pub async fn fulfill_request(
+        &self,
+        request_id: String,
+        status: u16,
+        body: String,
+        content_type: String,
+    ) -> Result<()> {
+        let inner = self.inner.clone();
+        inner
+            .fulfill_request(&request_id, status, &body, &content_type)
+            .await
+            .map_err(to_napi)
+    }
+
+    // --- Page / emulation / DOM mutation ---------------------------------
+
+    /// Replace the document HTML (`Page.setDocumentContent`).
+    #[napi]
+    pub async fn set_content(&self, html: String) -> Result<()> {
+        let inner = self.inner.clone();
+        inner.set_content(&html).await.map_err(to_napi)
+    }
+
+    /// Print the page to a PDF file (`Page.printToPDF`).
+    #[napi]
+    pub async fn print_to_pdf(&self, path: String) -> Result<()> {
+        let inner = self.inner.clone();
+        inner.print_to_pdf(&path).await.map_err(to_napi)
+    }
+
+    /// Register a script to run on every new document; returns its identifier.
+    #[napi]
+    pub async fn add_init_script(&self, source: String) -> Result<String> {
+        let inner = self.inner.clone();
+        inner.add_init_script(&source).await.map_err(to_napi)
+    }
+
+    /// Remove a previously registered init script.
+    #[napi]
+    pub async fn remove_init_script(&self, identifier: String) -> Result<()> {
+        let inner = self.inner.clone();
+        inner.remove_init_script(&identifier).await.map_err(to_napi)
+    }
+
+    /// Override the User-Agent string.
+    #[napi]
+    pub async fn set_user_agent(&self, ua: String) -> Result<()> {
+        let inner = self.inner.clone();
+        inner.set_user_agent(&ua).await.map_err(to_napi)
+    }
+
+    /// Override geolocation.
+    #[napi]
+    pub async fn set_geolocation(&self, latitude: f64, longitude: f64, accuracy: f64) -> Result<()> {
+        let inner = self.inner.clone();
+        inner
+            .set_geolocation(latitude, longitude, accuracy)
+            .await
+            .map_err(to_napi)
+    }
+
+    /// Toggle offline network emulation.
+    #[napi]
+    pub async fn set_offline(&self, offline: bool) -> Result<()> {
+        let inner = self.inner.clone();
+        inner.set_offline(offline).await.map_err(to_napi)
+    }
+
+    /// `DOM.setAttributeValue`.
+    #[napi]
+    pub async fn set_attribute(&self, node_id: i64, name: String, value: String) -> Result<()> {
+        let inner = self.inner.clone();
+        inner.set_attribute(node_id, &name, &value).await.map_err(to_napi)
+    }
+
+    /// `DOM.setOuterHTML`.
+    #[napi]
+    pub async fn set_outer_html(&self, node_id: i64, html: String) -> Result<()> {
+        let inner = self.inner.clone();
+        inner.set_outer_html(node_id, &html).await.map_err(to_napi)
+    }
+
+    /// `DOM.removeNode`.
+    #[napi]
+    pub async fn remove_node(&self, node_id: i64) -> Result<()> {
+        let inner = self.inner.clone();
+        inner.remove_node(node_id).await.map_err(to_napi)
+    }
+
+    /// `Runtime.callFunctionOn` for a remote object id; returns the JSON value.
+    #[napi]
+    pub async fn call_function_on(
+        &self,
+        object_id: String,
+        function_declaration: String,
+    ) -> Result<Value> {
+        let inner = self.inner.clone();
+        inner
+            .call_function_on(&object_id, &function_declaration)
+            .await
+            .map_err(to_napi)
     }
 
     /// Close the current tab.
@@ -429,7 +623,13 @@ struct Worker {
     agent: CoreAgent,
 }
 
-/// Fixed-size pool of [`BrowserAgent`] workers, one tab each.
+/// Fixed-size pool of worker tabs, one [`BrowserAgent`] each.
+///
+/// This is a purpose-built, action-batch oriented pool for JS, NOT a binding of
+/// the Rust `cdp_protocol::cluster::Cluster` (whose generic closure-based `run`
+/// cannot cross the FFI boundary). Semantics: [`Cluster.execute`] checks out one
+/// worker, runs the action batch in order, aborts the batch on the first failed
+/// action, and retries the whole batch up to `retries` times.
 #[napi]
 pub struct Cluster {
     workers: Arc<Mutex<Vec<Arc<Worker>>>>,
@@ -440,27 +640,26 @@ pub struct Cluster {
 #[napi]
 impl Cluster {
     /// Open `concurrency` tabs and wrap each as a worker agent.
+    ///
+    /// If any worker fails to come up, every tab already opened is closed before
+    /// returning the error, so a partial init never leaks tabs.
     #[napi(factory)]
     pub async fn create(opts: ClusterOptions) -> Result<Cluster> {
         let width = opts.viewport_width.unwrap_or(1920);
         let height = opts.viewport_height.unwrap_or(1200);
-        let mut workers = Vec::with_capacity(opts.concurrency as usize);
+        let mut workers: Vec<Arc<Worker>> = Vec::with_capacity(opts.concurrency as usize);
 
         for i in 0..opts.concurrency {
-            let target = CoreClient::create_tab(&opts.host, opts.port, None)
-                .await
-                .map_err(to_napi)?;
-            let ws = target.web_socket_debugger_url.ok_or_else(|| {
-                Error::from_reason(format!("worker {i}: target has no debugger URL"))
-            })?;
-            let client = CoreClient::connect(&ws).await.map_err(to_napi)?;
-            for d in ["Page", "Runtime", "DOM", "Network"] {
-                client.enable_domain(d).await.map_err(to_napi)?;
+            match Self::spawn_worker(&opts.host, opts.port, width, height, i).await {
+                Ok(w) => workers.push(Arc::new(w)),
+                Err(e) => {
+                    // Roll back: close every tab opened so far.
+                    for w in &workers {
+                        let _ = w.agent.close().await;
+                    }
+                    return Err(e);
+                }
             }
-            client.set_viewport(width, height, false).await.map_err(to_napi)?;
-            workers.push(Arc::new(Worker {
-                agent: CoreAgent::from_client(client),
-            }));
         }
 
         Ok(Cluster {
@@ -468,6 +667,19 @@ impl Cluster {
             sem: Arc::new(Semaphore::new(opts.concurrency as usize)),
             retries: opts.retries.unwrap_or(0),
         })
+    }
+
+    async fn spawn_worker(host: &str, port: u16, width: i32, height: i32, i: u32) -> Result<Worker> {
+        let target = CoreClient::create_tab(host, port, None).await.map_err(to_napi)?;
+        let ws = target.web_socket_debugger_url.ok_or_else(|| {
+            Error::from_reason(format!("[NO_TARGET] worker {i}: target has no debugger URL"))
+        })?;
+        let client = CoreClient::connect(&ws).await.map_err(to_napi)?;
+        for d in ["Page", "Runtime", "DOM", "Network"] {
+            client.enable_domain(d).await.map_err(to_napi)?;
+        }
+        client.set_viewport(width, height, false).await.map_err(to_napi)?;
+        Ok(Worker { agent: CoreAgent::from_client(client) })
     }
 
     /// Run one action batch on a free worker, with retries.

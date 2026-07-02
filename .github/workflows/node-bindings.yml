@@ -46,7 +46,23 @@ jobs:
   #     - name: Smoke test
   #       run: node test.mjs
 
+  check:
+    name: cargo test + version sync
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: .
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - uses: dtolnay/rust-toolchain@stable
+      - run: cargo test -p cdp-protocol
+      - run: node crates/cdp-protocol-node/version-check.mjs
+
   build:
+    needs: check
     strategy:
       fail-fast: false
       matrix:

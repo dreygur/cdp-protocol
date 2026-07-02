@@ -292,7 +292,9 @@ await agent.close()
 ```
 
 `CdpClient` (low-level), `BrowserAgent` (actions), and `Cluster` (worker pool)
-all map 1:1 to the Rust API. See [`crates/cdp-protocol-node`](../cdp-protocol-node/README.md).
+are exposed to JS. `CdpClient` mirrors the Rust client/network/page surface;
+`Cluster` is a purpose-built batch pool (not a port of the generic Rust
+`Cluster`). See [`crates/cdp-protocol-node`](../cdp-protocol-node/README.md).
 
 ## Project Structure
 

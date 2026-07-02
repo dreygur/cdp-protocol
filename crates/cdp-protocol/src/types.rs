@@ -45,7 +45,7 @@ pub struct EvaluateResult {
     pub exception_details: Option<Value>,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct DocumentNode {
     #[serde(rename = "nodeId")]
     pub node_id: i64,
