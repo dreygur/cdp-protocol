@@ -37,6 +37,11 @@ build:
 build-node:
     cd {{node_dir}} && npm run build
 
+# Usage: just dev [name]   where name = basic | agent | cluster | industrial
+# Hot-reload a Rust example on save (needs watchexec + Chrome on :9222)
+dev name="basic":
+    watchexec -w crates/cdp-protocol -e rs -r -- cargo run -p cdp-protocol --example {{ name }}
+
 # Dependency advisories (needs cargo-audit)
 audit:
     cargo audit
