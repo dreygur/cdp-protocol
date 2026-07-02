@@ -1,0 +1,52 @@
+{
+  "name": "cdp-protocol",
+  "version": "0.1.0",
+  "description": "Chrome DevTools Protocol client for Node/Deno/Bun, powered by Rust (napi-rs)",
+  "main": "index.js",
+  "types": "index.d.ts",
+  "license": "MIT",
+  "author": "Rakibul Yeasin <ryeasin03@gmail.com>",
+  "repository": "https://github.com/dreygur/cdp-protocol",
+  "keywords": [
+    "cdp",
+    "chrome-devtools-protocol",
+    "browser-automation",
+    "headless-chrome",
+    "scraping",
+    "napi-rs"
+  ],
+  "napi": {
+    "name": "cdp-protocol",
+    "triples": {
+      "defaults": true,
+      "additional": [
+        "aarch64-apple-darwin",
+        "aarch64-unknown-linux-gnu",
+        "x86_64-unknown-linux-musl",
+        "aarch64-pc-windows-msvc"
+      ]
+    }
+  },
+  "engines": {
+    "node": ">= 16"
+  },
+  "scripts": {
+    "build": "napi build --platform --release",
+    "build:debug": "napi build --platform",
+    "prepublishOnly": "node version-check.mjs && napi prepublish -t npm",
+    "version-check": "node version-check.mjs",
+    "test": "node test.mjs",
+    "load-test": "node load-test.mjs",
+    "example:basic": "node examples/basic.mjs",
+    "example:agent": "node examples/agent.mjs",
+    "example:cluster": "node examples/cluster.mjs",
+    "example:industrial": "node examples/industrial.mjs"
+  },
+  "devDependencies": {
+    "@napi-rs/cli": "^2.18.0"
+  },
+  "files": [
+    "index.js",
+    "index.d.ts"
+  ]
+}
