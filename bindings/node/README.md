@@ -99,6 +99,17 @@ await cluster.close()
 A worker is checked out per `execute` call, capped by `concurrency`; a failed
 batch retries up to `retries` times.
 
+## Examples
+
+Mirror the Rust `examples/`. Need Chrome on `:9222` and a built addon.
+
+```bash
+npm run example:basic        # low-level CdpClient
+npm run example:agent        # BrowserAgent: object + JSON actions, batches
+npm run example:cluster      # worker pool with retries
+npm run example:industrial   # fresh tab per page, bounded concurrency
+```
+
 ## Build from source
 
 ```bash

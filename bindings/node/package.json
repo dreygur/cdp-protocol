@@ -25,7 +25,11 @@
     "build": "napi build --platform --release",
     "build:debug": "napi build --platform",
     "prepublishOnly": "napi prepublish -t npm",
-    "test": "node test.mjs"
+    "test": "node test.mjs",
+    "example:basic": "node examples/basic.mjs",
+    "example:agent": "node examples/agent.mjs",
+    "example:cluster": "node examples/cluster.mjs",
+    "example:industrial": "node examples/industrial.mjs"
   },
   "devDependencies": {
     "@napi-rs/cli": "^2.18.0"
