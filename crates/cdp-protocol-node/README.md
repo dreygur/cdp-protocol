@@ -121,6 +121,21 @@ node test.mjs          # smoke test (needs Chrome on :9222)
 `napi build` generates `index.js` (loader picking the right prebuilt `.node`)
 and `index.d.ts` (typings derived from the `#[napi]` attributes).
 
+## Load test
+
+`npm run load-test` stresses the native async boundary (the shared-`&self` +
+`Arc`-clone pattern) against a real Chrome. Local run (linux-x64, headless):
+
+| Scenario | Result |
+| --- | --- |
+| 3000 concurrent `eval()` on one shared client | 0 mismatches, ~48k ops/s |
+| Cluster (12 workers, 600 tasks), per-task title check | 600/600 ok, 0 cross-talk |
+| 200 concurrent screenshots (Buffer marshaling) | 200/200 ok, 0 empty |
+| Memory | RSS stable ~52→74 MB, no leak |
+
+Confirms the pending-request map is race-free, workers don't cross-talk, and
+`Buffer` returns are thread-safe under load.
+
 ## Publishing
 
 CI (`.github/workflows/node-bindings.yml`) builds one `.node` per platform, then
