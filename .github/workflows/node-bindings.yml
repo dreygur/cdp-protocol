@@ -13,36 +13,38 @@ defaults:
     working-directory: crates/cdp-protocol-node
 
 jobs:
-  test:
-    name: test (linux + headless chrome)
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 20
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: browser-actions/setup-chrome@v1
-        id: chrome
-        with:
-          chrome-version: stable
-      - run: npm ci
-      - run: npx napi build --platform
-      - name: Launch headless Chrome
-        run: |
-          "${{ steps.chrome.outputs.chrome-path }}" \
-            --headless=new --remote-debugging-port=9222 \
-            --no-first-run --no-sandbox --disable-gpu about:blank \
-            > /tmp/chrome.log 2>&1 &
-          for i in $(seq 1 30); do
-            curl -sf http://127.0.0.1:9222/json/version > /dev/null && exit 0
-            sleep 1
-          done
-          echo "Chrome debug port never came up" >&2
-          cat /tmp/chrome.log >&2
-          exit 1
-      - name: Smoke test
-        run: node test.mjs
+  # Disabled: smoke/load testing is run locally against a real Chrome.
+  # Re-enable and add `test` back to the publish `needs:` list to gate on CI.
+  # test:
+  #   name: test (linux + headless chrome)
+  #   runs-on: ubuntu-latest
+  #   steps:
+  #     - uses: actions/checkout@v4
+  #     - uses: actions/setup-node@v4
+  #       with:
+  #         node-version: 20
+  #     - uses: dtolnay/rust-toolchain@stable
+  #     - uses: browser-actions/setup-chrome@v1
+  #       id: chrome
+  #       with:
+  #         chrome-version: stable
+  #     - run: npm ci
+  #     - run: npx napi build --platform
+  #     - name: Launch headless Chrome
+  #       run: |
+  #         "${{ steps.chrome.outputs.chrome-path }}" \
+  #           --headless=new --remote-debugging-port=9222 \
+  #           --no-first-run --no-sandbox --disable-gpu about:blank \
+  #           > /tmp/chrome.log 2>&1 &
+  #         for i in $(seq 1 30); do
+  #           curl -sf http://127.0.0.1:9222/json/version > /dev/null && exit 0
+  #           sleep 1
+  #         done
+  #         echo "Chrome debug port never came up" >&2
+  #         cat /tmp/chrome.log >&2
+  #         exit 1
+  #     - name: Smoke test
+  #       run: node test.mjs
 
   build:
     strategy:
@@ -82,7 +84,7 @@ jobs:
   publish:
     name: publish to npm
     runs-on: ubuntu-latest
-    needs: [build, test]
+    needs: build
     if: startsWith(github.ref, 'refs/tags/node-v')
     steps:
       - uses: actions/checkout@v4

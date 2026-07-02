@@ -35,6 +35,7 @@
     "build:debug": "napi build --platform",
     "prepublishOnly": "napi prepublish -t npm",
     "test": "node test.mjs",
+    "load-test": "node load-test.mjs",
     "example:basic": "node examples/basic.mjs",
     "example:agent": "node examples/agent.mjs",
     "example:cluster": "node examples/cluster.mjs",
