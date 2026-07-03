@@ -109,7 +109,7 @@ jobs:
           node-version: 20
           registry-url: https://registry.npmjs.org
       - run: npm ci
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           path: crates/cdp-protocol-node/artifacts
       - name: Move prebuilds into per-platform npm dirs
