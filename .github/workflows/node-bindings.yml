@@ -19,12 +19,12 @@ jobs:
   #   name: test (linux + headless chrome)
   #   runs-on: ubuntu-latest
   #   steps:
-  #     - uses: actions/checkout@v4
-  #     - uses: actions/setup-node@v4
+  #     - uses: actions/checkout@v7
+  #     - uses: actions/setup-node@v6
   #       with:
   #         node-version: 20
   #     - uses: dtolnay/rust-toolchain@stable
-  #     - uses: browser-actions/setup-chrome@v1
+  #     - uses: browser-actions/setup-chrome@v2
   #       id: chrome
   #       with:
   #         chrome-version: stable
@@ -53,8 +53,8 @@ jobs:
       run:
         working-directory: .
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v6
         with:
           node-version: 20
       - uses: dtolnay/rust-toolchain@stable
@@ -80,8 +80,8 @@ jobs:
     name: build ${{ matrix.target }}
     runs-on: ${{ matrix.host }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v6
         with:
           node-version: 20
       - uses: dtolnay/rust-toolchain@stable
@@ -92,7 +92,7 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y gcc-aarch64-linux-gnu
       - run: npm ci
       - run: npx napi build --platform --release --target ${{ matrix.target }}
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: bindings-${{ matrix.target }}
           path: crates/cdp-protocol-node/*.node
@@ -103,13 +103,13 @@ jobs:
     needs: build
     if: startsWith(github.ref, 'refs/tags/node-v')
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v6
         with:
           node-version: 20
           registry-url: https://registry.npmjs.org
       - run: npm ci
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           path: crates/cdp-protocol-node/artifacts
       - name: Move prebuilds into per-platform npm dirs
