@@ -18,7 +18,10 @@ async fn main() -> Result<()> {
     let targets = CdpClient::list_targets(&cfg.host, cfg.port).await?;
     println!("\nTargets ({}):", targets.len());
     for target in &targets {
-        println!("  - {} [{}]: {}", target.target_type, target.id, target.title);
+        println!(
+            "  - {} [{}]: {}",
+            target.target_type, target.id, target.title
+        );
     }
 
     // Connect to first page target
@@ -31,7 +34,9 @@ async fn main() -> Result<()> {
     client.enable_domain("Network").await?;
 
     // Set viewport
-    client.set_viewport(cfg.viewport_width, cfg.viewport_height, false).await?;
+    client
+        .set_viewport(cfg.viewport_width, cfg.viewport_height, false)
+        .await?;
 
     // Navigate
     let nav = client.navigate("https://example.com").await?;
@@ -53,7 +58,10 @@ async fn main() -> Result<()> {
 
     // DOM operations
     let doc = client.get_document().await?;
-    println!("\nRoot node: {} (children: {:?})", doc.node_name, doc.child_node_count);
+    println!(
+        "\nRoot node: {} (children: {:?})",
+        doc.node_name, doc.child_node_count
+    );
 
     if let Some(h1_id) = client.query_selector(doc.node_id, "h1").await? {
         let html = client.get_outer_html(h1_id).await?;

@@ -58,7 +58,9 @@ impl CdpClient {
                         };
                         let Some(id) = val.get("id").and_then(|v| v.as_u64()) else {
                             if let (Some(method), params) = (
-                                val.get("method").and_then(|v| v.as_str()).map(str::to_owned),
+                                val.get("method")
+                                    .and_then(|v| v.as_str())
+                                    .map(str::to_owned),
                                 val.get("params").cloned().unwrap_or(Value::Null),
                             ) {
                                 debug!(%method, "event");
@@ -158,73 +160,81 @@ impl CdpClient {
 
     pub async fn wait_for_event(&self, method: &str, timeout_ms: u64) -> Result<Value> {
         let mut rx = self.events_tx.subscribe();
-        tokio::time::timeout(
-            std::time::Duration::from_millis(timeout_ms),
-            async move {
-                loop {
-                    match rx.recv().await {
-                        Ok((m, params)) if m == method => return Ok(params),
-                        Ok(_) => continue,
-                        Err(broadcast::error::RecvError::Lagged(_)) => continue,
-                        Err(_) => return Err(CdpError::Protocol("event channel closed".into())),
-                    }
+        tokio::time::timeout(std::time::Duration::from_millis(timeout_ms), async move {
+            loop {
+                match rx.recv().await {
+                    Ok((m, params)) if m == method => return Ok(params),
+                    Ok(_) => continue,
+                    Err(broadcast::error::RecvError::Lagged(_)) => continue,
+                    Err(_) => return Err(CdpError::Protocol("event channel closed".into())),
                 }
-            },
-        )
+            }
+        })
         .await
         .map_err(|_| CdpError::Timeout)?
     }
 
     pub async fn enable_domain(&self, domain: &str) -> Result<()> {
-        self.send_command(&format!("{domain}.enable"), json!({})).await?;
+        self.send_command(&format!("{domain}.enable"), json!({}))
+            .await?;
         Ok(())
     }
 
     pub async fn navigate(&self, url: &str) -> Result<NavigationResult> {
-        let result = self.send_command("Page.navigate", json!({ "url": url })).await?;
+        let result = self
+            .send_command("Page.navigate", json!({ "url": url }))
+            .await?;
         Ok(serde_json::from_value(result)?)
     }
 
     pub async fn navigate_and_wait(&self, url: &str, timeout_ms: u64) -> Result<NavigationResult> {
         let mut rx = self.events_tx.subscribe();
         let nav = self.navigate(url).await?;
-        tokio::time::timeout(
-            std::time::Duration::from_millis(timeout_ms),
-            async move {
-                loop {
-                    match rx.recv().await {
-                        Ok((m, _)) if m == "Page.loadEventFired" => return Ok(nav),
-                        Ok(_) => continue,
-                        Err(broadcast::error::RecvError::Lagged(_)) => continue,
-                        Err(_) => return Err(CdpError::Protocol("event channel closed".into())),
-                    }
+        tokio::time::timeout(std::time::Duration::from_millis(timeout_ms), async move {
+            loop {
+                match rx.recv().await {
+                    Ok((m, _)) if m == "Page.loadEventFired" => return Ok(nav),
+                    Ok(_) => continue,
+                    Err(broadcast::error::RecvError::Lagged(_)) => continue,
+                    Err(_) => return Err(CdpError::Protocol("event channel closed".into())),
                 }
-            },
-        )
+            }
+        })
         .await
         .map_err(|_| CdpError::Timeout)?
     }
 
     pub async fn eval(&self, expression: &str) -> Result<String> {
         let result = self.evaluate(expression).await?;
-        Ok(result.result.value.map(|v| match v {
-            Value::String(s) => s,
-            other => other.to_string(),
-        }).unwrap_or_default())
+        Ok(result
+            .result
+            .value
+            .map(|v| match v {
+                Value::String(s) => s,
+                other => other.to_string(),
+            })
+            .unwrap_or_default())
     }
 
     pub async fn evaluate(&self, expression: &str) -> Result<EvaluateResult> {
         let result = self
-            .send_command("Runtime.evaluate", json!({ "expression": expression, "returnByValue": true }))
+            .send_command(
+                "Runtime.evaluate",
+                json!({ "expression": expression, "returnByValue": true }),
+            )
             .await?;
         Ok(serde_json::from_value(result)?)
     }
 
     pub async fn get_document(&self) -> Result<DocumentNode> {
-        let result = self.send_command("DOM.getDocument", json!({ "depth": 0 })).await?;
+        let result = self
+            .send_command("DOM.getDocument", json!({ "depth": 0 }))
+            .await?;
         let root = result["root"].clone();
         if root.is_null() {
-            return Err(CdpError::Protocol("DOM.getDocument returned no root".into()));
+            return Err(CdpError::Protocol(
+                "DOM.getDocument returned no root".into(),
+            ));
         }
         Ok(serde_json::from_value(root)?)
     }
@@ -234,7 +244,10 @@ impl CdpClient {
     /// rather than a node id that looks valid.
     pub async fn query_selector(&self, node_id: i64, selector: &str) -> Result<Option<i64>> {
         let result = self
-            .send_command("DOM.querySelector", json!({ "nodeId": node_id, "selector": selector }))
+            .send_command(
+                "DOM.querySelector",
+                json!({ "nodeId": node_id, "selector": selector }),
+            )
             .await?;
         Ok(match result["nodeId"].as_i64() {
             Some(id) if id > 0 => Some(id),
@@ -257,7 +270,10 @@ impl CdpClient {
 
     pub async fn screenshot(&self) -> Result<Vec<u8>> {
         let result = self
-            .send_command("Page.captureScreenshot", json!({ "format": "png", "fromSurface": true }))
+            .send_command(
+                "Page.captureScreenshot",
+                json!({ "format": "png", "fromSurface": true }),
+            )
             .await?;
         png_bytes_from(&result)
     }
@@ -268,12 +284,14 @@ impl CdpClient {
     }
 
     pub async fn full_page_screenshot(&self) -> Result<Vec<u8>> {
-        let size = self.evaluate(
-            "(() => ({ \
+        let size = self
+            .evaluate(
+                "(() => ({ \
                 w: Math.max(document.body.scrollWidth, document.documentElement.scrollWidth), \
                 h: Math.max(document.body.scrollHeight, document.documentElement.scrollHeight) \
-            }))()"
-        ).await?;
+            }))()",
+            )
+            .await?;
 
         let dims = size.result.value.as_ref();
         let w = dims.and_then(|v| v["w"].as_i64()).unwrap_or(1920) as i32;
@@ -281,11 +299,14 @@ impl CdpClient {
         self.set_viewport(w.max(1920), h.max(1200), false).await?;
 
         let result = self
-            .send_command("Page.captureScreenshot", json!({
-                "format": "png",
-                "captureBeyondViewport": true,
-                "fromSurface": true,
-            }))
+            .send_command(
+                "Page.captureScreenshot",
+                json!({
+                    "format": "png",
+                    "captureBeyondViewport": true,
+                    "fromSurface": true,
+                }),
+            )
             .await?;
         png_bytes_from(&result)
     }
@@ -299,7 +320,8 @@ impl CdpClient {
         self.send_command(
             "Emulation.setDeviceMetricsOverride",
             json!({ "width": width, "height": height, "deviceScaleFactor": 1, "mobile": mobile }),
-        ).await?;
+        )
+        .await?;
         Ok(())
     }
 
@@ -324,7 +346,8 @@ impl CdpClient {
             .into_iter()
             .find(|t| t.target_type == "page")
             .ok_or(CdpError::NoTarget)?;
-        let ws_url = page.web_socket_debugger_url
+        let ws_url = page
+            .web_socket_debugger_url
             .ok_or_else(|| CdpError::InvalidUrl("target has no debugger URL".into()))?;
         Self::connect(&ws_url).await
     }
@@ -335,7 +358,12 @@ impl CdpClient {
             Some(u) => format!("http://{host}:{port}/json/new?{u}"),
             None => format!("http://{host}:{port}/json/new"),
         };
-        Ok(reqwest::Client::new().put(&endpoint).send().await?.json().await?)
+        Ok(reqwest::Client::new()
+            .put(&endpoint)
+            .send()
+            .await?
+            .json()
+            .await?)
     }
 }
 

@@ -12,16 +12,16 @@ const MAX_CONCURRENT: usize = 5;
 const URLS: &[&str] = &[
     // --- replaced errored sites, slishee first ---
     "https://slishee.com",
-    "https://www.ebay.com",           // was amazon (bot-blocked)
-    "https://bsky.app",               // was x.com (bot-blocked)
-    "https://arstechnica.com",        // was techcrunch (bot-blocked)
-    "https://sendgrid.com",           // was twilio (0-width)
-    "https://www.sqlite.org",         // was postgresql (0-width)
-    "https://mariadb.org",            // was mysql (0-width)
-    "https://opensearch.org",         // was elastic (0-width)
-    "https://helm.sh",                // was kubernetes (0-width)
-    "https://podman.io",              // was docker (0-width)
-    "https://www.kernel.org",         // was linuxfoundation (0-width)
+    "https://www.ebay.com",    // was amazon (bot-blocked)
+    "https://bsky.app",        // was x.com (bot-blocked)
+    "https://arstechnica.com", // was techcrunch (bot-blocked)
+    "https://sendgrid.com",    // was twilio (0-width)
+    "https://www.sqlite.org",  // was postgresql (0-width)
+    "https://mariadb.org",     // was mysql (0-width)
+    "https://opensearch.org",  // was elastic (0-width)
+    "https://helm.sh",         // was kubernetes (0-width)
+    "https://podman.io",       // was docker (0-width)
+    "https://www.kernel.org",  // was linuxfoundation (0-width)
     // --- confirmed working ---
     "https://www.rust-lang.org",
     "https://www.google.com",
@@ -187,7 +187,9 @@ async fn process_page(id: usize, url: &str, cfg: &Config) -> Result<(String, f64
     client.enable_domain("Page").await?;
     client.enable_domain("Runtime").await?;
 
-    client.set_viewport(cfg.viewport_width, cfg.viewport_height, false).await?;
+    client
+        .set_viewport(cfg.viewport_width, cfg.viewport_height, false)
+        .await?;
     client.navigate_and_wait(url, 15_000).await?;
 
     let title = client

@@ -74,7 +74,9 @@ impl Cluster {
             let client = CdpClient::connect(&ws_url).await?;
             client.enable_domain("Page").await?;
             client.enable_domain("Runtime").await?;
-            client.set_viewport(config.viewport_width, config.viewport_height, false).await?;
+            client
+                .set_viewport(config.viewport_width, config.viewport_height, false)
+                .await?;
             clients.push(Arc::new(client));
         }
 
@@ -94,27 +96,40 @@ impl Cluster {
         F: Fn(Arc<CdpClient>, D) -> Fut + Send + Sync + 'static,
         Fut: Future<Output = Result<R>> + Send + 'static,
     {
-        let _permit = self.pool.semaphore.acquire().await.expect("semaphore closed");
-        let client = self.pool.clients.lock().await.pop().expect("worker missing");
+        let _permit = self
+            .pool
+            .semaphore
+            .acquire()
+            .await
+            .expect("semaphore closed");
+        let client = self
+            .pool
+            .clients
+            .lock()
+            .await
+            .pop()
+            .expect("worker missing");
 
-        let (result, elapsed, attempts) = run_with_retries(
-            Arc::clone(&client),
-            data,
-            &task,
-            self.config.retries,
-        )
-        .await;
+        let (result, elapsed, attempts) =
+            run_with_retries(Arc::clone(&client), data, &task, self.config.retries).await;
 
         self.pool.clients.lock().await.push(client);
 
         if self.config.monitor {
             match &result {
                 Ok(_) => println!("[cluster] ok  {:.1}s ({attempts}x)", elapsed.as_secs_f64()),
-                Err(e) => println!("[cluster] err {:.1}s ({attempts}x): {e}", elapsed.as_secs_f64()),
+                Err(e) => println!(
+                    "[cluster] err {:.1}s ({attempts}x): {e}",
+                    elapsed.as_secs_f64()
+                ),
             }
         }
 
-        TaskResult { result, elapsed, attempts }
+        TaskResult {
+            result,
+            elapsed,
+            attempts,
+        }
     }
 
     pub async fn run<D, R, F, Fut>(
@@ -146,12 +161,21 @@ impl Cluster {
 
                 if config.monitor {
                     match &result {
-                        Ok(_) => println!("[cluster] ok  {:.1}s ({attempts}x)", elapsed.as_secs_f64()),
-                        Err(e) => println!("[cluster] err {:.1}s ({attempts}x): {e}", elapsed.as_secs_f64()),
+                        Ok(_) => {
+                            println!("[cluster] ok  {:.1}s ({attempts}x)", elapsed.as_secs_f64())
+                        }
+                        Err(e) => println!(
+                            "[cluster] err {:.1}s ({attempts}x): {e}",
+                            elapsed.as_secs_f64()
+                        ),
                     }
                 }
 
-                TaskResult { result, elapsed, attempts }
+                TaskResult {
+                    result,
+                    elapsed,
+                    attempts,
+                }
             });
         }
 
