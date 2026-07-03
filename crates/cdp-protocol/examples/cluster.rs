@@ -1,4 +1,7 @@
-use cdp_protocol::{cluster::{Cluster, ClusterConfig}, Config, Result};
+use cdp_protocol::{
+    cluster::{Cluster, ClusterConfig},
+    Config, Result,
+};
 
 #[path = "common/logging.rs"]
 mod logging;
@@ -34,25 +37,27 @@ async fn main() -> Result<()> {
     let cluster = Cluster::new(config).await?;
 
     let shots_dir = cfg.screenshots_dir.clone();
-    let results = cluster.run(URLS.iter().copied().enumerate(), move |client, (i, url)| {
-        let shots_dir = shots_dir.clone();
-        async move {
-            client.navigate_and_wait(url, 15_000).await?;
-            let title = client.eval("document.title").await?;
-            client.full_page_screenshot_to_file(
-                &format!("{shots_dir}/cluster_{i:03}.png")
-            ).await?;
-            Ok::<_, cdp_protocol::CdpError>(title)
-        }
-    }).await;
+    let results = cluster
+        .run(URLS.iter().copied().enumerate(), move |client, (i, url)| {
+            let shots_dir = shots_dir.clone();
+            async move {
+                client.navigate_and_wait(url, 15_000).await?;
+                let title = client.eval("document.title").await?;
+                client
+                    .full_page_screenshot_to_file(&format!("{shots_dir}/cluster_{i:03}.png"))
+                    .await?;
+                Ok::<_, cdp_protocol::CdpError>(title)
+            }
+        })
+        .await;
 
     let success = results.iter().filter(|r| r.is_ok()).count();
-    let failed  = results.len() - success;
+    let failed = results.len() - success;
 
     for (i, r) in results.iter().enumerate() {
         match &r.result {
             Ok(title) => println!("[{i:2}] {title} ({:.1}s)", r.elapsed.as_secs_f64()),
-            Err(e)    => println!("[{i:2}] error: {e}"),
+            Err(e) => println!("[{i:2}] error: {e}"),
         }
     }
 

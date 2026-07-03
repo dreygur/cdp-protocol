@@ -119,7 +119,9 @@ impl CdpClient {
     #[napi(factory)]
     pub async fn connect(ws_url: String) -> Result<CdpClient> {
         let inner = CoreClient::connect(&ws_url).await.map_err(to_napi)?;
-        Ok(CdpClient { inner: Arc::new(inner) })
+        Ok(CdpClient {
+            inner: Arc::new(inner),
+        })
     }
 
     /// Discover the first `page` target on `host:port` and connect to it.
@@ -128,20 +130,26 @@ impl CdpClient {
         let inner = CoreClient::connect_to_page(&host, port)
             .await
             .map_err(to_napi)?;
-        Ok(CdpClient { inner: Arc::new(inner) })
+        Ok(CdpClient {
+            inner: Arc::new(inner),
+        })
     }
 
     /// `GET /json/version`  browser + protocol version.
     #[napi]
     pub async fn get_version(host: String, port: u16) -> Result<Value> {
-        let v = CoreClient::get_version(&host, port).await.map_err(to_napi)?;
+        let v = CoreClient::get_version(&host, port)
+            .await
+            .map_err(to_napi)?;
         serde_json::to_value(v).map_err(json_err)
     }
 
     /// `GET /json/list`  all inspectable targets.
     #[napi]
     pub async fn list_targets(host: String, port: u16) -> Result<Value> {
-        let t = CoreClient::list_targets(&host, port).await.map_err(to_napi)?;
+        let t = CoreClient::list_targets(&host, port)
+            .await
+            .map_err(to_napi)?;
         serde_json::to_value(t).map_err(json_err)
     }
 
@@ -257,7 +265,10 @@ impl CdpClient {
     #[napi]
     pub async fn set_viewport(&self, width: i32, height: i32, mobile: bool) -> Result<()> {
         let inner = self.inner.clone();
-        inner.set_viewport(width, height, mobile).await.map_err(to_napi)
+        inner
+            .set_viewport(width, height, mobile)
+            .await
+            .map_err(to_napi)
     }
 
     /// `DOM.getDocument` root node.
@@ -290,7 +301,13 @@ impl CdpClient {
     ) -> Result<()> {
         let inner = self.inner.clone();
         inner
-            .set_cookie(&name, &value, url.as_deref(), domain.as_deref(), path.as_deref())
+            .set_cookie(
+                &name,
+                &value,
+                url.as_deref(),
+                domain.as_deref(),
+                path.as_deref(),
+            )
             .await
             .map_err(to_napi)
     }
@@ -299,7 +316,10 @@ impl CdpClient {
     #[napi]
     pub async fn delete_cookies(&self, name: String, url: Option<String>) -> Result<()> {
         let inner = self.inner.clone();
-        inner.delete_cookies(&name, url.as_deref()).await.map_err(to_napi)
+        inner
+            .delete_cookies(&name, url.as_deref())
+            .await
+            .map_err(to_napi)
     }
 
     /// `Network.setExtraHTTPHeaders`.
@@ -394,7 +414,12 @@ impl CdpClient {
 
     /// Override geolocation.
     #[napi]
-    pub async fn set_geolocation(&self, latitude: f64, longitude: f64, accuracy: f64) -> Result<()> {
+    pub async fn set_geolocation(
+        &self,
+        latitude: f64,
+        longitude: f64,
+        accuracy: f64,
+    ) -> Result<()> {
         let inner = self.inner.clone();
         inner
             .set_geolocation(latitude, longitude, accuracy)
@@ -413,7 +438,10 @@ impl CdpClient {
     #[napi]
     pub async fn set_attribute(&self, node_id: i64, name: String, value: String) -> Result<()> {
         let inner = self.inner.clone();
-        inner.set_attribute(node_id, &name, &value).await.map_err(to_napi)
+        inner
+            .set_attribute(node_id, &name, &value)
+            .await
+            .map_err(to_napi)
     }
 
     /// `DOM.setOuterHTML`.
@@ -471,7 +499,9 @@ impl BrowserAgent {
     #[napi(factory)]
     pub async fn connect(host: String, port: u16) -> Result<BrowserAgent> {
         let inner = CoreAgent::connect(&host, port).await.map_err(to_napi)?;
-        Ok(BrowserAgent { inner: Arc::new(inner) })
+        Ok(BrowserAgent {
+            inner: Arc::new(inner),
+        })
     }
 
     /// Connect using a [`Config`] (also applies the viewport).
@@ -481,7 +511,9 @@ impl BrowserAgent {
         let inner = CoreAgent::connect_with_config(&core)
             .await
             .map_err(to_napi)?;
-        Ok(BrowserAgent { inner: Arc::new(inner) })
+        Ok(BrowserAgent {
+            inner: Arc::new(inner),
+        })
     }
 
     /// Run one action given as an object, e.g. `{ action: 'navigate', url }`.
@@ -514,25 +546,29 @@ impl BrowserAgent {
     /// Convenience: navigate.
     #[napi]
     pub async fn navigate(&self, url: String) -> Result<ActionResult> {
-        self.run(serde_json::json!({ "action": "navigate", "url": url })).await
+        self.run(serde_json::json!({ "action": "navigate", "url": url }))
+            .await
     }
 
     /// Convenience: click a selector.
     #[napi]
     pub async fn click(&self, selector: String) -> Result<ActionResult> {
-        self.run(serde_json::json!({ "action": "click", "selector": selector })).await
+        self.run(serde_json::json!({ "action": "click", "selector": selector }))
+            .await
     }
 
     /// Convenience: fill an input.
     #[napi]
     pub async fn fill(&self, selector: String, value: String) -> Result<ActionResult> {
-        self.run(serde_json::json!({ "action": "fill", "selector": selector, "value": value })).await
+        self.run(serde_json::json!({ "action": "fill", "selector": selector, "value": value }))
+            .await
     }
 
     /// Convenience: press a key.
     #[napi]
     pub async fn press_key(&self, key: String) -> Result<ActionResult> {
-        self.run(serde_json::json!({ "action": "press_key", "key": key })).await
+        self.run(serde_json::json!({ "action": "press_key", "key": key }))
+            .await
     }
 
     /// Convenience: page title.
@@ -556,12 +592,17 @@ impl BrowserAgent {
     /// Convenience: does a selector match?
     #[napi]
     pub async fn exists(&self, selector: String) -> Result<ActionResult> {
-        self.run(serde_json::json!({ "action": "exists", "selector": selector })).await
+        self.run(serde_json::json!({ "action": "exists", "selector": selector }))
+            .await
     }
 
     /// Convenience: wait until a selector appears or timeout.
     #[napi]
-    pub async fn wait_for_selector(&self, selector: String, timeout_ms: i64) -> Result<ActionResult> {
+    pub async fn wait_for_selector(
+        &self,
+        selector: String,
+        timeout_ms: i64,
+    ) -> Result<ActionResult> {
         self.run(serde_json::json!({
             "action": "wait_for_selector",
             "selector": selector,
@@ -573,13 +614,15 @@ impl BrowserAgent {
     /// Convenience: full-page screenshot to `path` (returns byte count if omitted).
     #[napi]
     pub async fn screenshot(&self, path: Option<String>) -> Result<ActionResult> {
-        self.run(serde_json::json!({ "action": "screenshot", "path": path })).await
+        self.run(serde_json::json!({ "action": "screenshot", "path": path }))
+            .await
     }
 
     /// Convenience: evaluate a JS expression, return its JSON value.
     #[napi]
     pub async fn evaluate(&self, expression: String) -> Result<ActionResult> {
-        self.run(serde_json::json!({ "action": "evaluate", "expression": expression })).await
+        self.run(serde_json::json!({ "action": "evaluate", "expression": expression }))
+            .await
     }
 
     /// Close the underlying tab.
@@ -671,17 +714,32 @@ impl Cluster {
         })
     }
 
-    async fn spawn_worker(host: &str, port: u16, width: i32, height: i32, i: u32) -> Result<Worker> {
-        let target = CoreClient::create_tab(host, port, None).await.map_err(to_napi)?;
+    async fn spawn_worker(
+        host: &str,
+        port: u16,
+        width: i32,
+        height: i32,
+        i: u32,
+    ) -> Result<Worker> {
+        let target = CoreClient::create_tab(host, port, None)
+            .await
+            .map_err(to_napi)?;
         let ws = target.web_socket_debugger_url.ok_or_else(|| {
-            Error::from_reason(format!("[NO_TARGET] worker {i}: target has no debugger URL"))
+            Error::from_reason(format!(
+                "[NO_TARGET] worker {i}: target has no debugger URL"
+            ))
         })?;
         let client = CoreClient::connect(&ws).await.map_err(to_napi)?;
         for d in ["Page", "Runtime", "DOM", "Network"] {
             client.enable_domain(d).await.map_err(to_napi)?;
         }
-        client.set_viewport(width, height, false).await.map_err(to_napi)?;
-        Ok(Worker { agent: CoreAgent::from_client(client) })
+        client
+            .set_viewport(width, height, false)
+            .await
+            .map_err(to_napi)?;
+        Ok(Worker {
+            agent: CoreAgent::from_client(client),
+        })
     }
 
     /// Run one action batch on a free worker, with retries.
