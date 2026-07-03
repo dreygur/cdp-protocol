@@ -10,9 +10,7 @@ pub fn init() -> Option<WorkerGuard> {
     let filter = EnvFilter::from_default_env();
 
     if std::env::var("RUST_LOG_SYNC").is_ok() {
-        tracing_subscriber::fmt()
-            .with_env_filter(filter)
-            .init();
+        tracing_subscriber::fmt().with_env_filter(filter).init();
         None
     } else {
         let (writer, guard) = tracing_appender::non_blocking(std::io::stdout());

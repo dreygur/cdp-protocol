@@ -13,33 +13,71 @@ fn quote(s: &str) -> String {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum BrowserAction {
-    Navigate { url: String },
+    Navigate {
+        url: String,
+    },
     GoBack,
     GoForward,
     Reload,
 
-    Click { selector: Option<String>, x: Option<f64>, y: Option<f64> },
-    Type { text: String, selector: Option<String> },
-    Fill { selector: String, value: String },
-    Submit { selector: Option<String> },
-    PressKey { key: String },
+    Click {
+        selector: Option<String>,
+        x: Option<f64>,
+        y: Option<f64>,
+    },
+    Type {
+        text: String,
+        selector: Option<String>,
+    },
+    Fill {
+        selector: String,
+        value: String,
+    },
+    Submit {
+        selector: Option<String>,
+    },
+    PressKey {
+        key: String,
+    },
 
     GetTitle,
     GetUrl,
     GetText,
-    GetContent { selector: Option<String> },
+    GetContent {
+        selector: Option<String>,
+    },
     GetLinks,
-    GetAttributes { selector: String },
-    Exists { selector: String },
+    GetAttributes {
+        selector: String,
+    },
+    Exists {
+        selector: String,
+    },
 
-    Screenshot { path: Option<String> },
-    Evaluate { expression: String },
+    Screenshot {
+        path: Option<String>,
+    },
+    Evaluate {
+        expression: String,
+    },
 
-    Wait { ms: u64 },
-    WaitForSelector { selector: String, timeout_ms: u64 },
+    Wait {
+        ms: u64,
+    },
+    WaitForSelector {
+        selector: String,
+        timeout_ms: u64,
+    },
 
-    Scroll { x: f64, y: f64 },
-    SetViewport { width: i32, height: i32, mobile: bool },
+    Scroll {
+        x: f64,
+        y: f64,
+    },
+    SetViewport {
+        width: i32,
+        height: i32,
+        mobile: bool,
+    },
     GetMetrics,
 }
 
@@ -81,7 +119,10 @@ impl BrowserAgent {
 
     pub async fn connect_with_config(config: &Config) -> Result<Self> {
         let agent = Self::connect(&config.host, config.port).await?;
-        agent.client.set_viewport(config.viewport_width, config.viewport_height, false).await?;
+        agent
+            .client
+            .set_viewport(config.viewport_width, config.viewport_height, false)
+            .await?;
         Ok(agent)
     }
 
@@ -110,11 +151,16 @@ impl BrowserAgent {
                     .and_then(|a| a["value"].as_str())
                     .unwrap_or("")
                     .to_string();
-                let url  = params["stackTrace"]["callFrames"][0]["url"]
-                    .as_str().map(str::to_owned);
-                let line = params["stackTrace"]["callFrames"][0]["lineNumber"]
-                    .as_u64();
-                let _ = tx.send(ConsoleMessage { level, text, url, line });
+                let url = params["stackTrace"]["callFrames"][0]["url"]
+                    .as_str()
+                    .map(str::to_owned);
+                let line = params["stackTrace"]["callFrames"][0]["lineNumber"].as_u64();
+                let _ = tx.send(ConsoleMessage {
+                    level,
+                    text,
+                    url,
+                    line,
+                });
             }
         });
         rx
@@ -122,8 +168,16 @@ impl BrowserAgent {
 
     pub async fn execute(&self, action: BrowserAction) -> ActionResult {
         match self.dispatch(action).await {
-            Ok(value) => ActionResult { success: true, value: Some(value), error: None },
-            Err(e) => ActionResult { success: false, value: None, error: Some(e.to_string()) },
+            Ok(value) => ActionResult {
+                success: true,
+                value: Some(value),
+                error: None,
+            },
+            Err(e) => ActionResult {
+                success: false,
+                value: None,
+                error: Some(e.to_string()),
+            },
         }
     }
 
@@ -138,7 +192,11 @@ impl BrowserAgent {
     pub async fn execute_json(&self, json_str: &str) -> ActionResult {
         match parse_action(json_str) {
             Ok(action) => self.execute(action).await,
-            Err(e) => ActionResult { success: false, value: None, error: Some(e.to_string()) },
+            Err(e) => ActionResult {
+                success: false,
+                value: None,
+                error: Some(e.to_string()),
+            },
         }
     }
 
@@ -154,16 +212,20 @@ impl BrowserAgent {
 
             BrowserAction::Click { selector, x, y } => {
                 if let Some(sel) = selector {
-                    self.client.eval(&format!(
-                        "document.querySelector({})?.click()",
-                        quote(&sel)
-                    )).await?;
+                    self.client
+                        .eval(&format!("document.querySelector({})?.click()", quote(&sel)))
+                        .await?;
                 } else if let (Some(cx), Some(cy)) = (x, y) {
                     for event_type in ["mousePressed", "mouseReleased"] {
-                        self.client.send_command("Input.dispatchMouseEvent", json!({
-                            "type": event_type, "x": cx, "y": cy,
-                            "button": "left", "clickCount": 1,
-                        })).await?;
+                        self.client
+                            .send_command(
+                                "Input.dispatchMouseEvent",
+                                json!({
+                                    "type": event_type, "x": cx, "y": cy,
+                                    "button": "left", "clickCount": 1,
+                                }),
+                            )
+                            .await?;
                     }
                 } else {
                     return Err(CdpError::Protocol("click: need selector or (x, y)".into()));
@@ -173,18 +235,20 @@ impl BrowserAgent {
 
             BrowserAction::Type { text, selector } => {
                 if let Some(sel) = selector {
-                    self.client.eval(&format!(
-                        "document.querySelector({})?.focus()",
-                        quote(&sel)
-                    )).await?;
+                    self.client
+                        .eval(&format!("document.querySelector({})?.focus()", quote(&sel)))
+                        .await?;
                 }
-                self.client.send_command("Input.insertText", json!({ "text": text })).await?;
+                self.client
+                    .send_command("Input.insertText", json!({ "text": text }))
+                    .await?;
                 Ok(json!(null))
             }
 
             BrowserAction::Fill { selector, value } => {
-                self.client.eval(&format!(
-                    "(sel => {{ \
+                self.client
+                    .eval(&format!(
+                        "(sel => {{ \
                         let el = document.querySelector(sel); \
                         if (!el) return; \
                         el.focus(); \
@@ -192,30 +256,40 @@ impl BrowserAgent {
                         el.dispatchEvent(new Event('input', {{bubbles:true}})); \
                         el.dispatchEvent(new Event('change', {{bubbles:true}})); \
                     }})({})",
-                    quote(&value),
-                    quote(&selector),
-                )).await?;
+                        quote(&value),
+                        quote(&selector),
+                    ))
+                    .await?;
                 Ok(json!(null))
             }
 
             BrowserAction::Submit { selector } => {
                 let sel = selector.as_deref().unwrap_or("form");
-                self.client.eval(&format!(
-                    "document.querySelector({})?.submit()",
-                    quote(sel)
-                )).await?;
+                self.client
+                    .eval(&format!("document.querySelector({})?.submit()", quote(sel)))
+                    .await?;
                 Ok(json!(null))
             }
 
             BrowserAction::PressKey { key } => {
                 let (code, vk) = key_info(&key);
-                self.client.send_command("Input.dispatchKeyEvent", json!({
-                    "type": "keyDown", "key": key, "code": code,
-                    "windowsVirtualKeyCode": vk,
-                })).await?;
-                self.client.send_command("Input.dispatchKeyEvent", json!({
-                    "type": "keyUp", "key": key, "code": code,
-                })).await?;
+                self.client
+                    .send_command(
+                        "Input.dispatchKeyEvent",
+                        json!({
+                            "type": "keyDown", "key": key, "code": code,
+                            "windowsVirtualKeyCode": vk,
+                        }),
+                    )
+                    .await?;
+                self.client
+                    .send_command(
+                        "Input.dispatchKeyEvent",
+                        json!({
+                            "type": "keyUp", "key": key, "code": code,
+                        }),
+                    )
+                    .await?;
                 Ok(json!(null))
             }
 
@@ -225,42 +299,45 @@ impl BrowserAgent {
 
             BrowserAction::GetContent { selector } => {
                 let expr = match selector {
-                    Some(sel) => format!(
-                        "document.querySelector({})?.innerHTML",
-                        quote(&sel)
-                    ),
+                    Some(sel) => format!("document.querySelector({})?.innerHTML", quote(&sel)),
                     None => "document.documentElement.outerHTML".into(),
                 };
                 Ok(json!(self.client.eval(&expr).await?))
             }
 
             BrowserAction::GetLinks => {
-                let ev = self.client.evaluate(
-                    "Array.from(document.querySelectorAll('a'))\
-                     .map(a => ({ href: a.href, text: a.innerText.trim() }))"
-                ).await?;
+                let ev = self
+                    .client
+                    .evaluate(
+                        "Array.from(document.querySelectorAll('a'))\
+                     .map(a => ({ href: a.href, text: a.innerText.trim() }))",
+                    )
+                    .await?;
                 Ok(ev.result.value.unwrap_or(json!([])))
             }
 
             BrowserAction::GetAttributes { selector } => {
-                let ev = self.client.evaluate(&format!(
-                    "(sel => {{ \
+                let ev = self
+                    .client
+                    .evaluate(&format!(
+                        "(sel => {{ \
                         let el = document.querySelector(sel); \
                         if (!el) return null; \
                         let attrs = {{}}; \
                         for (let a of el.attributes) attrs[a.name] = a.value; \
                         return attrs; \
                     }})({})",
-                    quote(&selector)
-                )).await?;
+                        quote(&selector)
+                    ))
+                    .await?;
                 Ok(ev.result.value.unwrap_or(json!(null)))
             }
 
             BrowserAction::Exists { selector } => {
-                let ev = self.client.evaluate(&format!(
-                    "!!document.querySelector({})",
-                    quote(&selector)
-                )).await?;
+                let ev = self
+                    .client
+                    .evaluate(&format!("!!document.querySelector({})", quote(&selector)))
+                    .await?;
                 Ok(ev.result.value.unwrap_or(json!(false)))
             }
 
@@ -282,13 +359,13 @@ impl BrowserAgent {
                 Ok(json!(null))
             }
 
-            BrowserAction::WaitForSelector { selector, timeout_ms } => {
-                let deadline = std::time::Instant::now()
-                    + std::time::Duration::from_millis(timeout_ms);
-                let expr = format!(
-                    "!!document.querySelector({})",
-                    quote(&selector)
-                );
+            BrowserAction::WaitForSelector {
+                selector,
+                timeout_ms,
+            } => {
+                let deadline =
+                    std::time::Instant::now() + std::time::Duration::from_millis(timeout_ms);
+                let expr = format!("!!document.querySelector({})", quote(&selector));
                 loop {
                     let ev = self.client.evaluate(&expr).await?;
                     if ev.result.value == Some(json!(true)) {
@@ -302,17 +379,25 @@ impl BrowserAgent {
             }
 
             BrowserAction::Scroll { x, y } => {
-                self.client.eval(&format!("window.scrollTo({x}, {y})")).await?;
+                self.client
+                    .eval(&format!("window.scrollTo({x}, {y})"))
+                    .await?;
                 Ok(json!(null))
             }
 
-            BrowserAction::SetViewport { width, height, mobile } => {
+            BrowserAction::SetViewport {
+                width,
+                height,
+                mobile,
+            } => {
                 self.client.set_viewport(width, height, mobile).await?;
                 Ok(json!(null))
             }
 
             BrowserAction::GetMetrics => {
-                self.client.send_command("Performance.getMetrics", json!({})).await
+                self.client
+                    .send_command("Performance.getMetrics", json!({}))
+                    .await
             }
         }
     }
@@ -320,17 +405,17 @@ impl BrowserAgent {
 
 fn key_info(key: &str) -> (&str, u32) {
     match key {
-        "Enter"      => ("Enter",      13),
-        "Tab"        => ("Tab",         9),
-        "Backspace"  => ("Backspace",   8),
-        "Delete"     => ("Delete",     46),
-        "Escape"     => ("Escape",     27),
-        " " | "Space"=> ("Space",      32),
-        "ArrowLeft"  => ("ArrowLeft",  37),
-        "ArrowUp"    => ("ArrowUp",    38),
+        "Enter" => ("Enter", 13),
+        "Tab" => ("Tab", 9),
+        "Backspace" => ("Backspace", 8),
+        "Delete" => ("Delete", 46),
+        "Escape" => ("Escape", 27),
+        " " | "Space" => ("Space", 32),
+        "ArrowLeft" => ("ArrowLeft", 37),
+        "ArrowUp" => ("ArrowUp", 38),
         "ArrowRight" => ("ArrowRight", 39),
-        "ArrowDown"  => ("ArrowDown",  40),
-        _            => (key,           0),
+        "ArrowDown" => ("ArrowDown", 40),
+        _ => (key, 0),
     }
 }
 
@@ -363,36 +448,65 @@ fn parse_action(json_str: &str) -> Result<BrowserAction> {
     }
 
     Ok(match a.action.as_str() {
-        "navigate"               => BrowserAction::Navigate { url: need!(a.url, "url") },
-        "back"     | "go_back"   => BrowserAction::GoBack,
-        "forward"  | "go_forward"=> BrowserAction::GoForward,
-        "reload"                 => BrowserAction::Reload,
-        "click"                  => BrowserAction::Click { selector: a.selector, x: a.x, y: a.y },
-        "type"                   => BrowserAction::Type { text: need!(a.text, "text"), selector: a.selector },
-        "fill"                   => BrowserAction::Fill { selector: need!(a.selector, "selector"), value: need!(a.value, "value") },
-        "submit"                 => BrowserAction::Submit { selector: a.selector },
-        "press_key" | "key"      => BrowserAction::PressKey { key: need!(a.key, "key") },
-        "get_title" | "title"    => BrowserAction::GetTitle,
-        "get_url"   | "url"      => BrowserAction::GetUrl,
-        "get_text"  | "text"     => BrowserAction::GetText,
-        "get_content"| "content" => BrowserAction::GetContent { selector: a.selector },
-        "get_links" | "links"    => BrowserAction::GetLinks,
-        "get_attributes" | "attributes" => BrowserAction::GetAttributes { selector: need!(a.selector, "selector") },
-        "exists"                 => BrowserAction::Exists { selector: need!(a.selector, "selector") },
-        "screenshot"             => BrowserAction::Screenshot { path: a.path },
-        "evaluate"  | "eval"     => BrowserAction::Evaluate { expression: need!(a.expression, "expression") },
-        "wait"                   => BrowserAction::Wait { ms: need!(a.ms, "ms") },
-        "wait_for_selector"      => BrowserAction::WaitForSelector {
+        "navigate" => BrowserAction::Navigate {
+            url: need!(a.url, "url"),
+        },
+        "back" | "go_back" => BrowserAction::GoBack,
+        "forward" | "go_forward" => BrowserAction::GoForward,
+        "reload" => BrowserAction::Reload,
+        "click" => BrowserAction::Click {
+            selector: a.selector,
+            x: a.x,
+            y: a.y,
+        },
+        "type" => BrowserAction::Type {
+            text: need!(a.text, "text"),
+            selector: a.selector,
+        },
+        "fill" => BrowserAction::Fill {
+            selector: need!(a.selector, "selector"),
+            value: need!(a.value, "value"),
+        },
+        "submit" => BrowserAction::Submit {
+            selector: a.selector,
+        },
+        "press_key" | "key" => BrowserAction::PressKey {
+            key: need!(a.key, "key"),
+        },
+        "get_title" | "title" => BrowserAction::GetTitle,
+        "get_url" | "url" => BrowserAction::GetUrl,
+        "get_text" | "text" => BrowserAction::GetText,
+        "get_content" | "content" => BrowserAction::GetContent {
+            selector: a.selector,
+        },
+        "get_links" | "links" => BrowserAction::GetLinks,
+        "get_attributes" | "attributes" => BrowserAction::GetAttributes {
+            selector: need!(a.selector, "selector"),
+        },
+        "exists" => BrowserAction::Exists {
+            selector: need!(a.selector, "selector"),
+        },
+        "screenshot" => BrowserAction::Screenshot { path: a.path },
+        "evaluate" | "eval" => BrowserAction::Evaluate {
+            expression: need!(a.expression, "expression"),
+        },
+        "wait" => BrowserAction::Wait {
+            ms: need!(a.ms, "ms"),
+        },
+        "wait_for_selector" => BrowserAction::WaitForSelector {
             selector: need!(a.selector, "selector"),
             timeout_ms: a.timeout_ms.unwrap_or(5000),
         },
-        "scroll"                 => BrowserAction::Scroll { x: a.x.unwrap_or(0.0), y: a.y.unwrap_or(0.0) },
-        "set_viewport"           => BrowserAction::SetViewport {
+        "scroll" => BrowserAction::Scroll {
+            x: a.x.unwrap_or(0.0),
+            y: a.y.unwrap_or(0.0),
+        },
+        "set_viewport" => BrowserAction::SetViewport {
             width: need!(a.width, "width"),
             height: need!(a.height, "height"),
             mobile: a.mobile.unwrap_or(false),
         },
-        "get_metrics" | "metrics"=> BrowserAction::GetMetrics,
+        "get_metrics" | "metrics" => BrowserAction::GetMetrics,
         other => return Err(CdpError::Protocol(format!("unknown action: {other}"))),
     })
 }
@@ -403,11 +517,14 @@ pub struct ActionBuilder {
 
 impl ActionBuilder {
     pub fn new() -> Self {
-        ActionBuilder { actions: Vec::new() }
+        ActionBuilder {
+            actions: Vec::new(),
+        }
     }
 
     pub fn navigate(mut self, url: &str) -> Self {
-        self.actions.push(BrowserAction::Navigate { url: url.into() });
+        self.actions
+            .push(BrowserAction::Navigate { url: url.into() });
         self
     }
 
@@ -417,27 +534,39 @@ impl ActionBuilder {
     }
 
     pub fn click(mut self, selector: &str) -> Self {
-        self.actions.push(BrowserAction::Click { selector: Some(selector.into()), x: None, y: None });
+        self.actions.push(BrowserAction::Click {
+            selector: Some(selector.into()),
+            x: None,
+            y: None,
+        });
         self
     }
 
     pub fn fill(mut self, selector: &str, value: &str) -> Self {
-        self.actions.push(BrowserAction::Fill { selector: selector.into(), value: value.into() });
+        self.actions.push(BrowserAction::Fill {
+            selector: selector.into(),
+            value: value.into(),
+        });
         self
     }
 
     pub fn press_key(mut self, key: &str) -> Self {
-        self.actions.push(BrowserAction::PressKey { key: key.into() });
+        self.actions
+            .push(BrowserAction::PressKey { key: key.into() });
         self
     }
 
     pub fn screenshot(mut self, path: Option<&str>) -> Self {
-        self.actions.push(BrowserAction::Screenshot { path: path.map(Into::into) });
+        self.actions.push(BrowserAction::Screenshot {
+            path: path.map(Into::into),
+        });
         self
     }
 
     pub fn evaluate(mut self, expr: &str) -> Self {
-        self.actions.push(BrowserAction::Evaluate { expression: expr.into() });
+        self.actions.push(BrowserAction::Evaluate {
+            expression: expr.into(),
+        });
         self
     }
 
