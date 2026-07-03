@@ -2,7 +2,7 @@ use std::fmt;
 
 #[derive(Debug)]
 pub enum CdpError {
-    WebSocket(tokio_tungstenite::tungstenite::Error),
+    WebSocket(Box<tokio_tungstenite::tungstenite::Error>),
     Http(reqwest::Error),
     Json(serde_json::Error),
     Io(std::io::Error),
@@ -31,7 +31,7 @@ impl std::error::Error for CdpError {}
 
 impl From<tokio_tungstenite::tungstenite::Error> for CdpError {
     fn from(e: tokio_tungstenite::tungstenite::Error) -> Self {
-        CdpError::WebSocket(e)
+        CdpError::WebSocket(Box::new(e))
     }
 }
 
