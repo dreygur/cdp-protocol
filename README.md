@@ -1,4 +1,4 @@
-# cdp-protocol
+# cdp-driver
 
 Chrome DevTools Protocol (CDP) client. WebSocket-based browser automation for AI
 agents, web scraping, and testing. Rust core, with first-class Node/Deno/Bun
@@ -28,13 +28,13 @@ google-chrome --headless=new --remote-debugging-port=9222 --no-first-run
 Rust:
 
 ```bash
-cargo run -p cdp-protocol --example basic
+cargo run -p cdp-driver --example basic
 ```
 
 Node / Deno / Bun:
 
 ```js
-import { BrowserAgent } from 'cdp-protocol'
+import { BrowserAgent } from 'cdp-driver'
 
 const agent = await BrowserAgent.connect('127.0.0.1', 9222)
 await agent.navigate('https://example.com')

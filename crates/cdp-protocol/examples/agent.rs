@@ -1,4 +1,4 @@
-use cdp_protocol::{ActionBuilder, BrowserAction, BrowserAgent, Config, Result};
+use cdp_driver::{ActionBuilder, BrowserAction, BrowserAgent, Config, Result};
 
 #[path = "common/logging.rs"]
 mod logging;

@@ -36,4 +36,4 @@ jobs:
           cat /tmp/chrome.log >&2
           exit 1
       - name: Run integration tests
-        run: cargo test -p cdp-protocol -- --ignored
+        run: cargo test -p cdp-driver -- --ignored

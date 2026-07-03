@@ -1,8 +1,8 @@
 //! Unit tests that need no browser: config, builders, serde, errors.
 
-use cdp_protocol::cluster::ClusterConfig;
-use cdp_protocol::{ActionBuilder, BrowserAction, CdpError, Config};
-use cdp_protocol::{NavigationResult, Target};
+use cdp_driver::cluster::ClusterConfig;
+use cdp_driver::{ActionBuilder, BrowserAction, CdpError, Config};
+use cdp_driver::{NavigationResult, Target};
 
 #[test]
 fn config_defaults() {
