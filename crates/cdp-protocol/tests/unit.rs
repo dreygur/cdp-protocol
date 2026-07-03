@@ -45,7 +45,9 @@ fn browser_action_json_roundtrip() {
     };
     let s = serde_json::to_string(&action).unwrap();
     let back: BrowserAction = serde_json::from_str(&s).unwrap();
-    assert!(matches!(back, BrowserAction::Fill { selector, value } if selector == "#q" && value == "hi"));
+    assert!(
+        matches!(back, BrowserAction::Fill { selector, value } if selector == "#q" && value == "hi")
+    );
 }
 
 #[test]
@@ -64,7 +66,10 @@ fn target_deserializes_cdp_shape() {
 
 #[test]
 fn navigation_result_serialize_roundtrip() {
-    let nav = NavigationResult { frame_id: "F1".into(), loader_id: None };
+    let nav = NavigationResult {
+        frame_id: "F1".into(),
+        loader_id: None,
+    };
     let v = serde_json::to_value(&nav).unwrap();
     assert_eq!(v["frameId"], "F1");
     let back: NavigationResult = serde_json::from_value(v).unwrap();

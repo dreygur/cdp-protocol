@@ -44,7 +44,9 @@ async fn main() -> Result<()> {
 
     let screenshot_path = format!("{}/rust-lang.png", cfg.screenshots_dir);
     let r = agent
-        .execute_json(&format!(r#"{{"action":"screenshot","path":"{screenshot_path}"}}"#))
+        .execute_json(&format!(
+            r#"{{"action":"screenshot","path":"{screenshot_path}"}}"#
+        ))
         .await;
     println!("Screenshot: {}", r);
 

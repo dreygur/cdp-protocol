@@ -37,7 +37,7 @@ console.log('Viewport:', await client.evaluate('({ width: innerWidth, height: in
 
 // DOM
 const h1 = await client.querySelector('h1')
-if (h1 > 0) console.log('H1:', await client.getOuterHtml(h1))
+if (h1 != null) console.log('H1:', await client.getOuterHtml(h1))
 
 // Screenshot
 const path = `${SHOTS}/example.png`

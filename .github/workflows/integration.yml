@@ -1,0 +1,39 @@
+name: integration
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '0 6 * * 1'
+  push:
+    branches: [main]
+    paths:
+      - 'crates/cdp-protocol/**'
+      - '.github/workflows/integration.yml'
+
+jobs:
+  chrome:
+    name: rust integration (headless chrome)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - uses: browser-actions/setup-chrome@v1
+        id: chrome
+        with:
+          chrome-version: stable
+      - name: Launch headless Chrome
+        run: |
+          "${{ steps.chrome.outputs.chrome-path }}" \
+            --headless=new --remote-debugging-port=9222 \
+            --no-first-run --no-sandbox --disable-gpu about:blank \
+            > /tmp/chrome.log 2>&1 &
+          for i in $(seq 1 30); do
+            curl -sf http://127.0.0.1:9222/json/version > /dev/null && exit 0
+            sleep 1
+          done
+          echo "Chrome debug port never came up" >&2
+          cat /tmp/chrome.log >&2
+          exit 1
+      - name: Run integration tests
+        run: cargo test -p cdp-protocol -- --ignored

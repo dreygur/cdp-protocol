@@ -58,11 +58,13 @@ impl CdpClient {
     }
 
     pub fn navigate_and_wait(&self, url: &str, timeout_ms: u64) -> Result<NavigationResult> {
-        self.rt.block_on(self.inner.navigate_and_wait(url, timeout_ms))
+        self.rt
+            .block_on(self.inner.navigate_and_wait(url, timeout_ms))
     }
 
     pub fn wait_for_event(&self, method: &str, timeout_ms: u64) -> Result<Value> {
-        self.rt.block_on(self.inner.wait_for_event(method, timeout_ms))
+        self.rt
+            .block_on(self.inner.wait_for_event(method, timeout_ms))
     }
 
     pub fn eval(&self, expression: &str) -> Result<String> {
@@ -77,8 +79,9 @@ impl CdpClient {
         self.rt.block_on(self.inner.get_document())
     }
 
-    pub fn query_selector(&self, node_id: i64, selector: &str) -> Result<i64> {
-        self.rt.block_on(self.inner.query_selector(node_id, selector))
+    pub fn query_selector(&self, node_id: i64, selector: &str) -> Result<Option<i64>> {
+        self.rt
+            .block_on(self.inner.query_selector(node_id, selector))
     }
 
     pub fn get_outer_html(&self, node_id: i64) -> Result<String> {
@@ -86,7 +89,8 @@ impl CdpClient {
     }
 
     pub fn set_viewport(&self, width: i32, height: i32, mobile: bool) -> Result<()> {
-        self.rt.block_on(self.inner.set_viewport(width, height, mobile))
+        self.rt
+            .block_on(self.inner.set_viewport(width, height, mobile))
     }
 
     pub fn screenshot(&self) -> Result<Vec<u8>> {
@@ -102,7 +106,8 @@ impl CdpClient {
     }
 
     pub fn full_page_screenshot_to_file(&self, path: &str) -> Result<()> {
-        self.rt.block_on(self.inner.full_page_screenshot_to_file(path))
+        self.rt
+            .block_on(self.inner.full_page_screenshot_to_file(path))
     }
 
     pub fn get_cookies(&self) -> Result<Vec<Cookie>> {
@@ -117,7 +122,8 @@ impl CdpClient {
         domain: Option<&str>,
         path: Option<&str>,
     ) -> Result<()> {
-        self.rt.block_on(self.inner.set_cookie(name, value, url, domain, path))
+        self.rt
+            .block_on(self.inner.set_cookie(name, value, url, domain, path))
     }
 
     pub fn delete_cookies(&self, name: &str, url: Option<&str>) -> Result<()> {
@@ -153,7 +159,8 @@ impl CdpClient {
     }
 
     pub fn set_geolocation(&self, latitude: f64, longitude: f64, accuracy: f64) -> Result<()> {
-        self.rt.block_on(self.inner.set_geolocation(latitude, longitude, accuracy))
+        self.rt
+            .block_on(self.inner.set_geolocation(latitude, longitude, accuracy))
     }
 
     pub fn set_offline(&self, offline: bool) -> Result<()> {
@@ -161,7 +168,8 @@ impl CdpClient {
     }
 
     pub fn set_attribute(&self, node_id: i64, name: &str, value: &str) -> Result<()> {
-        self.rt.block_on(self.inner.set_attribute(node_id, name, value))
+        self.rt
+            .block_on(self.inner.set_attribute(node_id, name, value))
     }
 
     pub fn set_outer_html(&self, node_id: i64, html: &str) -> Result<()> {
