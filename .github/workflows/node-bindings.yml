@@ -58,7 +58,7 @@ jobs:
         with:
           node-version: 20
       - uses: dtolnay/rust-toolchain@stable
-      - run: cargo test -p cdp-protocol
+      - run: cargo test -p cdp-driver
       - run: node crates/cdp-protocol-node/version-check.mjs
 
   build:

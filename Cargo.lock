@@ -61,8 +61,8 @@ dependencies = [
 ]
 
 [[package]]
-name = "cdp-protocol"
-version = "0.1.0"
+name = "cdp-driver"
+version = "0.2.0"
 dependencies = [
  "base64",
  "futures-util",
@@ -78,9 +78,9 @@ dependencies = [
 
 [[package]]
 name = "cdp-protocol-node"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
- "cdp-protocol",
+ "cdp-driver",
  "napi",
  "napi-build",
  "napi-derive",

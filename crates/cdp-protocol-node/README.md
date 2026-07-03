@@ -1,6 +1,6 @@
-# cdp-protocol (Node / Deno / Bun)
+# cdp-driver (Node / Deno / Bun)
 
-napi-rs bindings for the [`cdp-protocol`](https://crates.io/crates/cdp-protocol)
+napi-rs bindings for the [`cdp-driver`](https://crates.io/crates/cdp-driver)
 Rust crate: a Chrome DevTools Protocol client. WebSocket transport and the tokio
 runtime run in native Rust; JS gets Promises and TypeScript types.
 
@@ -14,11 +14,11 @@ google-chrome --headless=new --remote-debugging-port=9222 --no-first-run
 ## Install
 
 ```bash
-npm i cdp-protocol      # Node / Bun
+npm i cdp-driver      # Node / Bun
 ```
 
 ```ts
-import { CdpClient } from 'npm:cdp-protocol'   // Deno
+import { CdpClient } from 'npm:cdp-driver'   // Deno
 ```
 
 Rust snake_case maps to JS camelCase automatically (`connect_to_page` →
@@ -33,7 +33,7 @@ Runtime support (all load the same `.node` via Node-API):
   ```ts
   import { createRequire } from 'node:module'
   const require = createRequire(import.meta.url)
-  const { CdpClient } = require('cdp-protocol')
+  const { CdpClient } = require('cdp-driver')
   ```
 - **Bun**  supports Node-API and should load the same addon; not yet verified
   locally.
@@ -43,7 +43,7 @@ Runtime support (all load the same `.node` via Node-API):
 ### `CdpClient`  low-level CDP client
 
 ```js
-import { CdpClient } from 'cdp-protocol'
+import { CdpClient } from 'cdp-driver'
 
 const client = await CdpClient.connectToPage('127.0.0.1', 9222)
 await client.enableDomain('Page')
@@ -80,7 +80,7 @@ The Rust-only `blocking` feature has no JS equivalent (JS is async already).
 ### `BrowserAgent`  high-level actions (auto-enables Page/Runtime/DOM/Network)
 
 ```js
-import { BrowserAgent } from 'cdp-protocol'
+import { BrowserAgent } from 'cdp-driver'
 
 const agent = await BrowserAgent.connect('127.0.0.1', 9222)
 await agent.navigate('https://example.com')
@@ -106,7 +106,7 @@ JSON string (`execute`, `executeJson`, `executeMany`). Action names:
 ### `Cluster`  fixed-size pool, one tab per worker
 
 ```js
-import { Cluster } from 'cdp-protocol'
+import { Cluster } from 'cdp-driver'
 
 const cluster = await Cluster.create({
   host: '127.0.0.1', port: 9222, concurrency: 4, retries: 1,
@@ -130,7 +130,7 @@ times. If any worker fails to start, `create` closes the tabs it already opened
 before throwing (no leaked tabs).
 
 > Note: this `Cluster` is a purpose-built, action-batch pool for JS. It is not a
-> binding of the Rust `cdp_protocol::cluster::Cluster`, whose generic
+> binding of the Rust `cdp_driver::cluster::Cluster`, whose generic
 > closure-based API cannot cross the FFI boundary. Behavior is intentionally
 > batch-oriented rather than a 1:1 port.
 

@@ -1,4 +1,4 @@
-use cdp_protocol::{
+use cdp_driver::{
     cluster::{Cluster, ClusterConfig},
     Config, Result,
 };
@@ -46,7 +46,7 @@ async fn main() -> Result<()> {
                 client
                     .full_page_screenshot_to_file(&format!("{shots_dir}/cluster_{i:03}.png"))
                     .await?;
-                Ok::<_, cdp_protocol::CdpError>(title)
+                Ok::<_, cdp_driver::CdpError>(title)
             }
         })
         .await;

@@ -4,13 +4,13 @@
 //! against a Chrome started with `--remote-debugging-port=9222`:
 //!
 //! ```text
-//! cargo test -p cdp-protocol -- --ignored
+//! cargo test -p cdp-driver -- --ignored
 //! ```
 //!
 //! CI launches headless Chrome first; see `.github/workflows/integration.yml`.
 //! Override the endpoint with `CDP_HOST` / `CDP_PORT`.
 
-use cdp_protocol::{BrowserAction, BrowserAgent, CdpClient};
+use cdp_driver::{BrowserAction, BrowserAgent, CdpClient};
 
 fn host() -> String {
     std::env::var("CDP_HOST").unwrap_or_else(|_| "localhost".to_string())
