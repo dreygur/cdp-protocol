@@ -132,8 +132,8 @@ async fn main() -> Result<()> {
     let semaphore = Arc::new(Semaphore::new(MAX_CONCURRENT));
     let mut set = JoinSet::new();
 
-    for i in 0..NUM_PAGES {
-        let url = URLS[i].to_string();
+    for (i, &url) in URLS.iter().enumerate() {
+        let url = url.to_string();
         let sem = semaphore.clone();
         let cfg = cfg.clone();
 

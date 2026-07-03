@@ -634,8 +634,7 @@ async fn main() -> Result<()> {
     println!("Math: {:?}", result.result.value);
 
     let doc = client.get_document().await?;
-    let h1_id = client.query_selector(doc.node_id, "h1").await?;
-    if h1_id > 0 {
+    if let Some(h1_id) = client.query_selector(doc.node_id, "h1").await? {
         println!("H1: {}", client.get_outer_html(h1_id).await?);
     }
 

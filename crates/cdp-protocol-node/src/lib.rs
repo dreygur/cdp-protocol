@@ -71,12 +71,13 @@ impl Default for Config {
 
 impl From<Config> for CoreConfig {
     fn from(c: Config) -> Self {
-        let mut base = CoreConfig::default();
-        base.host = c.host;
-        base.port = c.port;
-        base.viewport_width = c.viewport_width;
-        base.viewport_height = c.viewport_height;
-        base
+        CoreConfig {
+            host: c.host,
+            port: c.port,
+            viewport_width: c.viewport_width,
+            viewport_height: c.viewport_height,
+            ..CoreConfig::default()
+        }
     }
 }
 
