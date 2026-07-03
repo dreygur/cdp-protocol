@@ -125,7 +125,9 @@ impl CdpClient {
         self.pending.lock().await.insert(id, tx);
 
         if let Err(e) = self.tx.send(Message::Text(
-            json!({ "id": id, "method": method, "params": params }).to_string(),
+            json!({ "id": id, "method": method, "params": params })
+                .to_string()
+                .into(),
         )) {
             // Writer task is gone; don't leave a dangling entry in `pending`.
             self.pending.lock().await.remove(&id);
