@@ -1,4 +1,4 @@
-# cdp-protocol
+# cdp-driver
 
 Chrome DevTools Protocol (CDP) client in Rust. WebSocket-based browser automation for AI agents, web scraping, and testing.
 
@@ -16,10 +16,10 @@ Add to `Cargo.toml`:
 
 ```toml
 [dependencies]
-cdp-protocol = { git = "https://github.com/dreygur/cdp-protocol" }
+cdp-driver = "0.2"
 
 # optional: synchronous blocking API
-cdp-protocol = { git = "https://github.com/dreygur/cdp-protocol", features = ["blocking"] }
+cdp-driver = { version = "0.2", features = ["blocking"] }
 ```
 
 ## Usage
@@ -27,10 +27,10 @@ cdp-protocol = { git = "https://github.com/dreygur/cdp-protocol", features = ["b
 ### Async (default)
 
 ```rust
-use cdp_protocol::{BrowserAgent, BrowserAction, Config};
+use cdp_driver::{BrowserAgent, BrowserAction, Config};
 
 #[tokio::main]
-async fn main() -> cdp_protocol::Result<()> {
+async fn main() -> cdp_driver::Result<()> {
     let cfg = Config::default();
     std::fs::create_dir_all(&cfg.screenshots_dir).ok();
 
@@ -50,13 +50,13 @@ async fn main() -> cdp_protocol::Result<()> {
 
 ### Blocking (feature = "blocking")
 
-No async runtime needed — each client owns its own tokio runtime internally.
+No async runtime needed - each client owns its own tokio runtime internally.
 
 ```rust
-use cdp_protocol::blocking::BrowserAgent;
-use cdp_protocol::{BrowserAction, Config};
+use cdp_driver::blocking::BrowserAgent;
+use cdp_driver::{BrowserAction, Config};
 
-fn main() -> cdp_protocol::Result<()> {
+fn main() -> cdp_driver::Result<()> {
     let cfg = Config::default();
     std::fs::create_dir_all(&cfg.screenshots_dir).ok();
 
@@ -86,7 +86,7 @@ agent.execute_json(r#"{"action": "screenshot", "path": "screenshots/result.png"}
 ### Action builder
 
 ```rust
-use cdp_protocol::ActionBuilder;
+use cdp_driver::ActionBuilder;
 
 let actions = ActionBuilder::new()
     .navigate("https://example.com")
@@ -103,10 +103,10 @@ let results = agent.execute_many(actions).await;
 ### Low-level client
 
 ```rust
-use cdp_protocol::{CdpClient, Config};
+use cdp_driver::{CdpClient, Config};
 
 #[tokio::main]
-async fn main() -> cdp_protocol::Result<()> {
+async fn main() -> cdp_driver::Result<()> {
     let cfg = Config::default();
 
     let client = CdpClient::connect_to_page(&cfg.host, cfg.port).await?;
@@ -188,11 +188,11 @@ client.set_offline(true).await?;
 
 ### Cluster (puppeteer-cluster style)
 
-Pre-creates a pool of browser tabs and distributes tasks across them with retries. Workers are reused between tasks — no create/close overhead per task.
+Pre-creates a pool of browser tabs and distributes tasks across them with retries. Workers are reused between tasks - no create/close overhead per task.
 
 ```rust
-use cdp_protocol::cluster::{Cluster, ClusterConfig};
-use cdp_protocol::Config;
+use cdp_driver::cluster::{Cluster, ClusterConfig};
+use cdp_driver::Config;
 
 let cluster = Cluster::new(ClusterConfig {
     concurrency: 5,
@@ -257,10 +257,10 @@ cluster.close().await;
 
 ```bash
 # debug CDP send/recv/events
-RUST_LOG=cdp_protocol=debug cargo run --example basic
+RUST_LOG=cdp_driver=debug cargo run --example basic
 
 # synchronous log output (easier to correlate with code flow)
-RUST_LOG=cdp_protocol=debug RUST_LOG_SYNC=1 cargo run --example basic
+RUST_LOG=cdp_driver=debug RUST_LOG_SYNC=1 cargo run --example basic
 
 # everything including tokio/reqwest internals
 RUST_LOG=debug cargo run --example basic
@@ -269,10 +269,10 @@ RUST_LOG=debug cargo run --example basic
 ## Examples
 
 ```bash
-cargo run -p cdp-protocol --example basic        # low-level CdpClient
-cargo run -p cdp-protocol --example agent        # BrowserAgent + ActionBuilder
-cargo run -p cdp-protocol --example industrial   # 100 pages in parallel with JoinSet
-cargo run -p cdp-protocol --example cluster      # worker pool with retries
+cargo run -p cdp-driver --example basic        # low-level CdpClient
+cargo run -p cdp-driver --example agent        # BrowserAgent + ActionBuilder
+cargo run -p cdp-driver --example industrial   # 100 pages in parallel with JoinSet
+cargo run -p cdp-driver --example cluster      # worker pool with retries
 ```
 
 ## Node / Deno / Bun
@@ -283,7 +283,7 @@ work; JS gets Promises and TypeScript types. Works in Node, Bun, and Deno
 (`npm:` specifier).
 
 ```js
-import { BrowserAgent, Cluster } from 'cdp-protocol'
+import { BrowserAgent, Cluster } from 'cdp-driver'
 
 const agent = await BrowserAgent.connect('127.0.0.1', 9222)
 await agent.navigate('https://example.com')
