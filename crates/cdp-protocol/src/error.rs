@@ -1,14 +1,26 @@
+//! The crate's error type and [`Result`] alias.
+
 use std::fmt;
 
+/// Errors returned by every fallible operation in this crate.
 #[derive(Debug)]
 pub enum CdpError {
+    /// The CDP WebSocket connection failed or dropped.
     WebSocket(Box<tokio_tungstenite::tungstenite::Error>),
+    /// A request to Chrome's HTTP endpoint (`/json/*`) failed.
     Http(reqwest::Error),
+    /// A CDP payload failed to (de)serialize.
     Json(serde_json::Error),
+    /// A filesystem operation (e.g. writing a screenshot) failed.
     Io(std::io::Error),
+    /// A URL supplied by the caller or returned by Chrome was malformed or missing.
     InvalidUrl(String),
+    /// Chrome returned a CDP protocol-level error, or a response was shaped
+    /// unexpectedly.
     Protocol(String),
+    /// A command or event wait exceeded its configured timeout.
     Timeout,
+    /// No page target was available to connect to (e.g. `list_targets` returned none).
     NoTarget,
 }
 
@@ -53,4 +65,5 @@ impl From<std::io::Error> for CdpError {
     }
 }
 
+/// Convenience alias for `std::result::Result<T, CdpError>`.
 pub type Result<T> = std::result::Result<T, CdpError>;

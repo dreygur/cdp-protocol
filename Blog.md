@@ -600,7 +600,7 @@ tracing = "0.1"
 Direct protocol access with convenience wrappers.
 
 ```rust
-use cdp_protocol::{CdpClient, Config, Result};
+use cdp_driver::{CdpClient, Config, Result};
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -652,7 +652,7 @@ async fn main() -> Result<()> {
 AI-friendly interface with JSON action dispatch.
 
 ```rust
-use cdp_protocol::{BrowserAgent, BrowserAction, Config, Result};
+use cdp_driver::{BrowserAgent, BrowserAction, Config, Result};
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -680,7 +680,7 @@ async fn main() -> Result<()> {
 Fluent API for chaining:
 
 ```rust
-use cdp_protocol::ActionBuilder;
+use cdp_driver::ActionBuilder;
 
 let actions = ActionBuilder::new()
     .navigate("https://www.google.com")
@@ -788,7 +788,7 @@ let result = agent.execute(BrowserAction::Evaluate {
 ### Industrial Scraping (100 Pages Parallel)
 
 ```rust
-use cdp_protocol::{CdpClient, CdpError, Config, Result};
+use cdp_driver::{CdpClient, CdpError, Config, Result};
 use std::sync::Arc;
 use std::time::Instant;
 use tokio::sync::Semaphore;

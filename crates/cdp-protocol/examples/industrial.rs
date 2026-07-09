@@ -1,4 +1,4 @@
-use cdp_protocol::{CdpClient, CdpError, Config, Result};
+use cdp_driver::{CdpClient, CdpError, Config, Result};
 
 #[path = "common/logging.rs"]
 mod logging;

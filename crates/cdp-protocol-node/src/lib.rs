@@ -15,7 +15,7 @@ use napi_derive::napi;
 use serde_json::Value;
 use tokio::sync::{Mutex, Semaphore};
 
-use cdp_protocol::{
+use cdp_driver::{
     BrowserAgent as CoreAgent, CdpClient as CoreClient, CdpError, Config as CoreConfig,
 };
 
@@ -639,7 +639,7 @@ impl BrowserAgent {
     }
 }
 
-fn core_result(r: cdp_protocol::ActionResult) -> ActionResult {
+fn core_result(r: cdp_driver::ActionResult) -> ActionResult {
     ActionResult {
         success: r.success,
         value: r.value,
@@ -671,7 +671,7 @@ struct Worker {
 /// Fixed-size pool of worker tabs, one [`BrowserAgent`] each.
 ///
 /// This is a purpose-built, action-batch oriented pool for JS, NOT a binding of
-/// the Rust `cdp_protocol::cluster::Cluster` (whose generic closure-based `run`
+/// the Rust `cdp_driver::cluster::Cluster` (whose generic closure-based `run`
 /// cannot cross the FFI boundary). Semantics: [`Cluster.execute`] checks out one
 /// worker, runs the action batch in order, aborts the batch on the first failed
 /// action, and retries the whole batch up to `retries` times.
