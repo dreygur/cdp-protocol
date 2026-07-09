@@ -1,3 +1,7 @@
+//! Synchronous mirror of [`crate::client`] and [`crate::agent`], gated behind the
+//! `blocking` feature. Each type owns its own single-threaded-caller Tokio runtime
+//! internally, so no async runtime is required of the caller.
+
 use std::collections::HashMap;
 use std::sync::Arc;
 
@@ -16,6 +20,8 @@ fn build_rt() -> Result<Runtime> {
         .map_err(CdpError::Io)
 }
 
+/// Blocking counterpart of [`crate::client::CdpClient`]; every method here has the
+/// same behavior as its async namesake there, called via `Runtime::block_on`.
 pub struct CdpClient {
     inner: crate::client::CdpClient,
     rt: Arc<Runtime>,
@@ -185,6 +191,8 @@ impl CdpClient {
     }
 }
 
+/// Blocking counterpart of [`crate::agent::BrowserAgent`]; every method here has the
+/// same behavior as its async namesake there, called via `Runtime::block_on`.
 pub struct BrowserAgent {
     inner: crate::agent::BrowserAgent,
     rt: Arc<Runtime>,

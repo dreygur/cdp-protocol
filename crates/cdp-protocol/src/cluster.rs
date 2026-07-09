@@ -1,3 +1,6 @@
+//! A worker pool of pre-created tabs, distributing tasks with retries
+//! (puppeteer-cluster style). See [`Cluster`].
+
 use std::future::Future;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -9,13 +12,21 @@ use crate::client::CdpClient;
 use crate::config::Config;
 use crate::error::{CdpError, Result};
 
+/// Settings for [`Cluster::new`].
 pub struct ClusterConfig {
+    /// Chrome's remote-debugging host.
     pub host: String,
+    /// Chrome's remote-debugging port.
     pub port: u16,
+    /// Number of worker tabs to pre-create and run concurrently.
     pub concurrency: usize,
+    /// Retries per task before it's reported as failed.
     pub retries: u32,
+    /// Print per-task timing/outcome to stdout as tasks complete.
     pub monitor: bool,
+    /// Viewport width applied to every worker tab.
     pub viewport_width: i32,
+    /// Viewport height applied to every worker tab.
     pub viewport_height: i32,
 }
 
@@ -40,13 +51,19 @@ impl From<Config> for ClusterConfig {
     }
 }
 
+/// Outcome of one task run through [`Cluster::execute`] or [`Cluster::run`].
 pub struct TaskResult<R> {
+    /// The task's return value, or its final error stringified after retries
+    /// were exhausted.
     pub result: std::result::Result<R, String>,
+    /// Total wall time across all attempts.
     pub elapsed: Duration,
+    /// Number of attempts made (1 if it succeeded on the first try).
     pub attempts: u32,
 }
 
 impl<R> TaskResult<R> {
+    /// Shorthand for `self.result.is_ok()`.
     pub fn is_ok(&self) -> bool {
         self.result.is_ok()
     }
@@ -57,12 +74,16 @@ struct Pool {
     semaphore: tokio::sync::Semaphore,
 }
 
+/// A pool of `config.concurrency` pre-created tabs shared across tasks, with
+/// per-task retries. Workers are reused between tasks, avoiding per-task
+/// create/close overhead.
 pub struct Cluster {
     pool: Arc<Pool>,
     config: Arc<ClusterConfig>,
 }
 
 impl Cluster {
+    /// Create `config.concurrency` tabs and enable `Page`/`Runtime` on each.
     pub async fn new(config: ClusterConfig) -> Result<Self> {
         let mut clients = Vec::with_capacity(config.concurrency);
 
@@ -89,6 +110,8 @@ impl Cluster {
         })
     }
 
+    /// Run `task` on one available worker, retrying up to `config.retries` times on
+    /// failure. Blocks until a worker is free.
     pub async fn execute<D, R, F, Fut>(&self, data: D, task: F) -> TaskResult<R>
     where
         D: Clone + Send + 'static,
@@ -132,6 +155,9 @@ impl Cluster {
         }
     }
 
+    /// Run `task` once per item in `items`, distributed across all workers
+    /// concurrently (bounded by `config.concurrency`). Order of results is
+    /// completion order, not input order.
     pub async fn run<D, R, F, Fut>(
         &self,
         items: impl IntoIterator<Item = D>,
@@ -188,6 +214,7 @@ impl Cluster {
         results
     }
 
+    /// Close every worker tab.
     pub async fn close(self) {
         let clients = self.pool.clients.lock().await;
         for client in clients.iter() {

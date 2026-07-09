@@ -16,10 +16,10 @@ Add to `Cargo.toml`:
 
 ```toml
 [dependencies]
-cdp-driver = { git = "https://github.com/dreygur/cdp-protocol" }
+cdp-driver = "0.2"
 
 # optional: synchronous blocking API
-cdp-driver = { git = "https://github.com/dreygur/cdp-protocol", features = ["blocking"] }
+cdp-driver = { version = "0.2", features = ["blocking"] }
 ```
 
 ## Usage
@@ -50,7 +50,7 @@ async fn main() -> cdp_driver::Result<()> {
 
 ### Blocking (feature = "blocking")
 
-No async runtime needed — each client owns its own tokio runtime internally.
+No async runtime needed - each client owns its own tokio runtime internally.
 
 ```rust
 use cdp_driver::blocking::BrowserAgent;
@@ -188,7 +188,7 @@ client.set_offline(true).await?;
 
 ### Cluster (puppeteer-cluster style)
 
-Pre-creates a pool of browser tabs and distributes tasks across them with retries. Workers are reused between tasks — no create/close overhead per task.
+Pre-creates a pool of browser tabs and distributes tasks across them with retries. Workers are reused between tasks - no create/close overhead per task.
 
 ```rust
 use cdp_driver::cluster::{Cluster, ClusterConfig};

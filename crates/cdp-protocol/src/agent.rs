@@ -1,3 +1,6 @@
+//! High-level, serializable browser actions built on top of [`crate::client::CdpClient`],
+//! suited to driving the browser from tool calls (LLM agents) or a fluent builder.
+
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use tokio::sync::broadcast;
@@ -11,6 +14,11 @@ fn quote(s: &str) -> String {
     serde_json::to_string(s).unwrap_or_else(|_| format!("\"{}\"", s.replace('"', "\\\"")))
 }
 
+/// A single browser operation, dispatched by [`BrowserAgent::execute`].
+///
+/// Serializes to/from the same shape [`BrowserAgent::execute_json`] parses (field
+/// names map to lower_snake_case action names, e.g. `Navigate { url }` <->
+/// `{"action": "navigate", "url": "..."}`), so it doubles as an LLM tool-call schema.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum BrowserAction {
     Navigate {
@@ -81,14 +89,21 @@ pub enum BrowserAction {
     GetMetrics,
 }
 
+/// Outcome of [`BrowserAgent::execute`]. Errors are captured as strings rather than
+/// propagated so a batch of actions ([`BrowserAgent::execute_many`]) can run to
+/// completion and report per-action success/failure.
 #[derive(Debug, Clone)]
 pub struct ActionResult {
+    /// Whether the action completed without error.
     pub success: bool,
+    /// The action's return value, when it produces one and succeeded.
     pub value: Option<Value>,
+    /// The error message, when `success` is `false`.
     pub error: Option<String>,
 }
 
 impl ActionResult {
+    /// Shorthand for `self.success`.
     pub fn is_success(&self) -> bool {
         self.success
     }
@@ -104,11 +119,15 @@ impl std::fmt::Display for ActionResult {
     }
 }
 
+/// Drives a single browser tab via [`BrowserAction`]s. Wraps a [`CdpClient`] with
+/// `Page`, `Runtime`, `DOM`, and `Network` already enabled.
 pub struct BrowserAgent {
     client: CdpClient,
 }
 
 impl BrowserAgent {
+    /// Connect to the first available page target and enable the domains actions
+    /// depend on.
     pub async fn connect(host: &str, port: u16) -> Result<Self> {
         let client = CdpClient::connect_to_page(host, port).await?;
         for domain in ["Page", "Runtime", "DOM", "Network"] {
@@ -117,6 +136,8 @@ impl BrowserAgent {
         Ok(BrowserAgent { client })
     }
 
+    /// [`connect`](Self::connect) using `config.host`/`config.port`, then apply
+    /// `config`'s viewport size.
     pub async fn connect_with_config(config: &Config) -> Result<Self> {
         let agent = Self::connect(&config.host, config.port).await?;
         agent
@@ -136,6 +157,9 @@ impl BrowserAgent {
         self.client.close().await
     }
 
+    /// Start capturing `console.*` calls from the page. Returns a receiver that
+    /// yields each call as a [`ConsoleMessage`]; capture continues until the agent
+    /// (and its underlying client) is dropped.
     pub fn capture_console(&self) -> broadcast::Receiver<ConsoleMessage> {
         let (tx, rx) = broadcast::channel(64);
         let mut events = self.client.subscribe_events();
@@ -166,6 +190,8 @@ impl BrowserAgent {
         rx
     }
 
+    /// Run one action, capturing success/failure into an [`ActionResult`] instead of
+    /// returning `Result`.
     pub async fn execute(&self, action: BrowserAction) -> ActionResult {
         match self.dispatch(action).await {
             Ok(value) => ActionResult {
@@ -181,6 +207,7 @@ impl BrowserAgent {
         }
     }
 
+    /// Run each action in `actions` in order, continuing even if one fails.
     pub async fn execute_many(&self, actions: Vec<BrowserAction>) -> Vec<ActionResult> {
         let mut results = Vec::with_capacity(actions.len());
         for action in actions {
@@ -189,6 +216,8 @@ impl BrowserAgent {
         results
     }
 
+    /// Parse `json_str` as a [`BrowserAction`] (e.g. `{"action": "navigate", "url":
+    /// "..."}`) and run it. Suited for dispatching LLM tool calls directly.
     pub async fn execute_json(&self, json_str: &str) -> ActionResult {
         match parse_action(json_str) {
             Ok(action) => self.execute(action).await,
@@ -511,28 +540,34 @@ fn parse_action(json_str: &str) -> Result<BrowserAction> {
     })
 }
 
+/// Fluent builder for a sequence of [`BrowserAction`]s, run with
+/// [`BrowserAgent::execute_many`].
 pub struct ActionBuilder {
     actions: Vec<BrowserAction>,
 }
 
 impl ActionBuilder {
+    /// Start an empty action sequence.
     pub fn new() -> Self {
         ActionBuilder {
             actions: Vec::new(),
         }
     }
 
+    /// Append [`BrowserAction::Navigate`].
     pub fn navigate(mut self, url: &str) -> Self {
         self.actions
             .push(BrowserAction::Navigate { url: url.into() });
         self
     }
 
+    /// Append [`BrowserAction::Wait`].
     pub fn wait(mut self, ms: u64) -> Self {
         self.actions.push(BrowserAction::Wait { ms });
         self
     }
 
+    /// Append [`BrowserAction::Click`] targeting a CSS selector.
     pub fn click(mut self, selector: &str) -> Self {
         self.actions.push(BrowserAction::Click {
             selector: Some(selector.into()),
@@ -542,6 +577,7 @@ impl ActionBuilder {
         self
     }
 
+    /// Append [`BrowserAction::Fill`].
     pub fn fill(mut self, selector: &str, value: &str) -> Self {
         self.actions.push(BrowserAction::Fill {
             selector: selector.into(),
@@ -550,12 +586,14 @@ impl ActionBuilder {
         self
     }
 
+    /// Append [`BrowserAction::PressKey`].
     pub fn press_key(mut self, key: &str) -> Self {
         self.actions
             .push(BrowserAction::PressKey { key: key.into() });
         self
     }
 
+    /// Append [`BrowserAction::Screenshot`].
     pub fn screenshot(mut self, path: Option<&str>) -> Self {
         self.actions.push(BrowserAction::Screenshot {
             path: path.map(Into::into),
@@ -563,6 +601,7 @@ impl ActionBuilder {
         self
     }
 
+    /// Append [`BrowserAction::Evaluate`].
     pub fn evaluate(mut self, expr: &str) -> Self {
         self.actions.push(BrowserAction::Evaluate {
             expression: expr.into(),
@@ -570,16 +609,19 @@ impl ActionBuilder {
         self
     }
 
+    /// Append [`BrowserAction::Scroll`].
     pub fn scroll(mut self, x: f64, y: f64) -> Self {
         self.actions.push(BrowserAction::Scroll { x, y });
         self
     }
 
+    /// Append [`BrowserAction::GetTitle`].
     pub fn get_title(mut self) -> Self {
         self.actions.push(BrowserAction::GetTitle);
         self
     }
 
+    /// Finish building and return the action sequence.
     pub fn build(self) -> Vec<BrowserAction> {
         self.actions
     }
