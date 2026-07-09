@@ -1,6 +1,6 @@
 {
   "name": "cdp-driver",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Chrome DevTools Protocol client for Node/Deno/Bun, powered by Rust (napi-rs)",
   "main": "index.js",
   "types": "index.d.ts",
