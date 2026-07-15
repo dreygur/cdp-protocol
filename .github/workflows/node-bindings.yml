@@ -19,7 +19,7 @@ jobs:
   #   runs-on: ubuntu-latest
   #   steps:
   #     - uses: actions/checkout@v7
-  #     - uses: actions/setup-node@v6
+  #     - uses: actions/setup-node@v7
   #       with:
   #         node-version: 20
   #     - uses: dtolnay/rust-toolchain@stable
@@ -53,7 +53,7 @@ jobs:
         working-directory: .
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@v7
         with:
           node-version: 20
       - uses: dtolnay/rust-toolchain@stable
@@ -80,7 +80,7 @@ jobs:
     runs-on: ${{ matrix.host }}
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@v7
         with:
           node-version: 20
       - uses: dtolnay/rust-toolchain@stable
