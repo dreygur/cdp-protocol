@@ -252,3 +252,29 @@ async fn a_client_recovers_after_one_command_times_out() {
 
     assert_eq!(after["ok"], true);
 }
+
+// -- Scene: the generated constants name real methods -----------------------
+
+#[tokio::test]
+async fn a_generated_constant_carries_the_method_name_to_the_wire() {
+    use cdp_driver::methods::{storage, target};
+
+    // The constants are only useful if they hold exactly the string CDP expects,
+    // so check the value that actually reaches the server, not the constant.
+    let (client, _server, seen) = client_recording(json!({ "targetId": "from-a-constant" })).await;
+
+    let created: CreatedTarget = client
+        .call(target::CREATE_TARGET, json!({ "url": "about:blank" }))
+        .await
+        .expect("a call keyed by a generated constant should succeed");
+    assert_eq!(created.target_id, "from-a-constant");
+
+    let _: Value = client
+        .call(storage::CLEAR_DATA_FOR_ORIGIN, json!({ "origin": "x" }))
+        .await
+        .expect("a second domain should work the same way");
+
+    let log = seen.lock().expect("read the recorded commands");
+    assert_eq!(log[0].method, "Target.createTarget");
+    assert_eq!(log[1].method, "Storage.clearDataForOrigin");
+}

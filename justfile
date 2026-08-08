@@ -24,6 +24,18 @@ lint:
 # Rust unit tests
 test:
     cargo test -p cdp-driver
+    cargo test -p xtask
+
+# Regenerate src/methods/ from protocol/*.json (rustfmt wraps the long ones)
+generate-methods:
+    cargo run -p xtask
+    cargo fmt --all
+
+# Refresh the vendored CDP schemas from upstream, then regenerate
+update-protocol:
+    curl -sfL -o protocol/browser_protocol.json https://raw.githubusercontent.com/ChromeDevTools/devtools-protocol/master/json/browser_protocol.json
+    curl -sfL -o protocol/js_protocol.json https://raw.githubusercontent.com/ChromeDevTools/devtools-protocol/master/json/js_protocol.json
+    just generate-methods
 
 # Node smoke test (needs Chrome on :9222)
 test-node:

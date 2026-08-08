@@ -32,6 +32,7 @@ pub mod client;
 pub mod cluster;
 pub mod config;
 pub mod error;
+pub mod methods;
 pub mod network;
 pub mod page;
 pub mod types;
