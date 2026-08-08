@@ -23,7 +23,7 @@ lint:
 
 # Rust unit tests
 test:
-    cargo test -p cdp-protocol
+    cargo test -p cdp-driver
 
 # Node smoke test (needs Chrome on :9222)
 test-node:
@@ -40,7 +40,7 @@ build-node:
 # Usage: just dev [name]   where name = basic | agent | cluster | industrial
 # Hot-reload a Rust example on save (needs watchexec + Chrome on :9222)
 dev name="basic":
-    watchexec -w crates/cdp-protocol -e rs -r -- cargo run -p cdp-protocol --example {{ name }}
+    watchexec -w crates/cdp-protocol -e rs -r -- cargo run -p cdp-driver --example {{ name }}
 
 # Dependency advisories (needs cargo-audit)
 audit:
