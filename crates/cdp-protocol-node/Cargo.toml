@@ -4,6 +4,9 @@ version = "0.3.0"
 edition = "2021"
 license = "MIT"
 description = "Node/Deno/Bun bindings for cdp-driver (Chrome DevTools Protocol client)"
+# Ships to npm as a prebuilt .node addon. A cdylib is not consumable as a Rust
+# dependency, so there is nothing for crates.io to serve.
+publish = false
 
 [lib]
 crate-type = ["cdylib"]
