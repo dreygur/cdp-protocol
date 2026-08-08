@@ -5,8 +5,6 @@
 
 use xtask::docs::{defuse, wrap};
 
-// -- Scene: markup the schema never meant as markup -------------------------
-
 #[test]
 fn square_brackets_are_escaped_so_rustdoc_sees_no_link() {
     assert_eq!(
@@ -32,8 +30,6 @@ fn ordinary_prose_passes_through_unchanged() {
 fn runs_of_whitespace_collapse() {
     assert_eq!(defuse("one\n  two\tthree"), "one two three");
 }
-
-// -- Scene: bare URLs, which need the opposite of escaping ------------------
 
 #[test]
 fn a_bare_url_is_wrapped_so_rustdoc_links_it() {
@@ -72,8 +68,6 @@ fn a_fragment_url_keeps_its_hash() {
 fn plain_http_is_recognised_too() {
     assert_eq!(defuse("http://example.com"), "<http://example.com>");
 }
-
-// -- Scene: wrapping ---------------------------------------------------------
 
 #[test]
 fn short_prose_stays_on_one_line() {

@@ -15,16 +15,12 @@ use serde_json::{json, Value};
 
 use mock_cdp::{Command, Reply, METHOD_NOT_FOUND};
 
-// -- The rules of the play -------------------------------------------------
-
 /// Long enough that a loopback round trip is never the reason a test fails.
 const PATIENT: Duration = Duration::from_secs(5);
 
 /// Short enough that the timeout test finishes quickly, long enough that a busy
 /// machine does not trip it by accident.
 const IMPATIENT: Duration = Duration::from_millis(250);
-
-// -- Leaves ----------------------------------------------------------------
 
 /// A client wired to a mock endpoint that answers every command the same way.
 ///
@@ -60,8 +56,6 @@ async fn client_recording(
     (client, server, seen)
 }
 
-// -- Scene: a result comes back as the type you asked for -------------------
-
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct CreatedTarget {
@@ -96,8 +90,6 @@ async fn call_deserializes_the_result_not_the_envelope() {
 
     assert_eq!(created.target_id, "only-in-result");
 }
-
-// -- Scene: what goes out on the wire --------------------------------------
 
 #[tokio::test]
 async fn call_sends_the_method_and_params_verbatim() {
@@ -142,8 +134,6 @@ async fn concurrent_calls_get_distinct_ids_and_their_own_answers() {
     );
 }
 
-// -- Scene: call_raw hands back exactly what arrived ------------------------
-
 #[tokio::test]
 async fn call_raw_returns_the_result_untouched() {
     let payload = json!({ "nested": { "list": [1, 2, 3] }, "flag": true });
@@ -172,8 +162,6 @@ async fn a_command_with_no_result_yields_null() {
 
     assert_eq!(got, Value::Null);
 }
-
-// -- Scene: the ways it can fail -------------------------------------------
 
 #[tokio::test]
 async fn a_protocol_error_becomes_cdp_error_protocol() {
@@ -252,8 +240,6 @@ async fn a_client_recovers_after_one_command_times_out() {
 
     assert_eq!(after["ok"], true);
 }
-
-// -- Scene: the generated constants name real methods -----------------------
 
 #[tokio::test]
 async fn a_generated_constant_carries_the_method_name_to_the_wire() {

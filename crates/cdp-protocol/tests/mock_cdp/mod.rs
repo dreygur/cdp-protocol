@@ -14,8 +14,6 @@ use tokio::net::TcpListener;
 use tokio_tungstenite::accept_async;
 use tokio_tungstenite::tungstenite::Message;
 
-// -- The rules of the play -------------------------------------------------
-
 /// Bind only to loopback; these servers are for one test process, never a network.
 const LOOPBACK: &str = "127.0.0.1";
 
@@ -24,8 +22,6 @@ const ANY_PORT: u16 = 0;
 
 /// CDP's own code for a method the browser does not recognise.
 pub const METHOD_NOT_FOUND: i64 = -32601;
-
-// -- The cast --------------------------------------------------------------
 
 /// One command as it arrived from the client, already unwrapped from its envelope.
 #[derive(Debug, Clone)]
@@ -61,8 +57,6 @@ impl Drop for MockCdp {
     }
 }
 
-// -- Leaves: turning bytes into commands and replies into bytes -------------
-
 /// Unwrap one incoming frame. Returns `None` for frames that are not commands,
 /// which the client should never send but which we refuse to panic over.
 fn parse_command(text: &str) -> Option<Command> {
@@ -85,8 +79,6 @@ fn render_reply(id: u64, reply: Reply) -> Option<String> {
     };
     Some(envelope.to_string())
 }
-
-// -- The scene: one connection, start to finish ----------------------------
 
 /// Serve a single accepted socket until the client goes away.
 async fn serve_connection(stream: tokio::net::TcpStream, respond: Responder) {
@@ -116,8 +108,6 @@ async fn serve_forever(listener: TcpListener, respond: Responder) {
         tokio::spawn(serve_connection(stream, respond.clone()));
     }
 }
-
-// -- The composite ---------------------------------------------------------
 
 /// Start a mock endpoint that answers every command via `respond`.
 ///

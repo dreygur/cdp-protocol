@@ -10,15 +10,11 @@ use std::fs;
 use xtask::names::{screaming_snake, snake};
 use xtask::{repository_root, schema};
 
-// -- The rules of the play -------------------------------------------------
-
 /// Where the committed modules live, relative to the repository root.
 const METHODS_DIR: &str = "crates/cdp-protocol/src/methods";
 
 /// The shape every generated constant has, whatever rustfmt did to the line.
 const CONST_PREFIX: &str = "pub const ";
-
-// -- Leaves ----------------------------------------------------------------
 
 /// Every `NAME = "Domain.method"` pair declared in the committed modules.
 fn committed_constants() -> BTreeSet<(String, String)> {
@@ -66,8 +62,6 @@ fn expected_constants() -> BTreeSet<(String, String)> {
         })
         .collect()
 }
-
-// -- Scene: the committed output is the schema's output --------------------
 
 #[test]
 fn every_schema_command_has_a_committed_constant() {
