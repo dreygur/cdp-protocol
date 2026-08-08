@@ -1,92 +1,30 @@
-//! High-level, serializable browser actions built on top of [`crate::client::CdpClient`],
-//! suited to driving the browser from tool calls (LLM agents) or a fluent builder.
+//! Running [`BrowserAction`]s against a tab and reporting how each one went.
 
-use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use tokio::sync::broadcast;
 
+use crate::action_parse::parse_action;
 use crate::client::CdpClient;
 use crate::config::Config;
 use crate::error::{CdpError, Result};
+use crate::keys::key_info;
 use crate::types::ConsoleMessage;
 
+// Re-exported so `crate::agent::{BrowserAction, ActionBuilder}` keeps resolving
+// now that these live in their own modules.
+pub use crate::action::BrowserAction;
+pub use crate::action_builder::ActionBuilder;
+
+/// How often `WaitForSelector` re-checks the page.
+const SELECTOR_POLL_MS: u64 = 100;
+
+/// How many console messages may queue before the oldest are dropped.
+const CONSOLE_BACKLOG: usize = 64;
+
+/// Render `s` as a JavaScript string literal, so a selector or value containing
+/// quotes cannot break out of the expression it is spliced into.
 fn quote(s: &str) -> String {
     serde_json::to_string(s).unwrap_or_else(|_| format!("\"{}\"", s.replace('"', "\\\"")))
-}
-
-/// A single browser operation, dispatched by [`BrowserAgent::execute`].
-///
-/// Serializes to/from the same shape [`BrowserAgent::execute_json`] parses (field
-/// names map to lower_snake_case action names, e.g. `Navigate { url }` <->
-/// `{"action": "navigate", "url": "..."}`), so it doubles as an LLM tool-call schema.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub enum BrowserAction {
-    Navigate {
-        url: String,
-    },
-    GoBack,
-    GoForward,
-    Reload,
-
-    Click {
-        selector: Option<String>,
-        x: Option<f64>,
-        y: Option<f64>,
-    },
-    Type {
-        text: String,
-        selector: Option<String>,
-    },
-    Fill {
-        selector: String,
-        value: String,
-    },
-    Submit {
-        selector: Option<String>,
-    },
-    PressKey {
-        key: String,
-    },
-
-    GetTitle,
-    GetUrl,
-    GetText,
-    GetContent {
-        selector: Option<String>,
-    },
-    GetLinks,
-    GetAttributes {
-        selector: String,
-    },
-    Exists {
-        selector: String,
-    },
-
-    Screenshot {
-        path: Option<String>,
-    },
-    Evaluate {
-        expression: String,
-    },
-
-    Wait {
-        ms: u64,
-    },
-    WaitForSelector {
-        selector: String,
-        timeout_ms: u64,
-    },
-
-    Scroll {
-        x: f64,
-        y: f64,
-    },
-    SetViewport {
-        width: i32,
-        height: i32,
-        mobile: bool,
-    },
-    GetMetrics,
 }
 
 /// Outcome of [`BrowserAgent::execute`]. Errors are captured as strings rather than
@@ -106,6 +44,15 @@ impl ActionResult {
     /// Shorthand for `self.success`.
     pub fn is_success(&self) -> bool {
         self.success
+    }
+
+    /// The outcome of an action that raised `error`.
+    fn failed(error: impl std::fmt::Display) -> Self {
+        ActionResult {
+            success: false,
+            value: None,
+            error: Some(error.to_string()),
+        }
     }
 }
 
@@ -161,7 +108,7 @@ impl BrowserAgent {
     /// yields each call as a [`ConsoleMessage`]; capture continues until the agent
     /// (and its underlying client) is dropped.
     pub fn capture_console(&self) -> broadcast::Receiver<ConsoleMessage> {
-        let (tx, rx) = broadcast::channel(64);
+        let (tx, rx) = broadcast::channel(CONSOLE_BACKLOG);
         let mut events = self.client.subscribe_events();
         tokio::spawn(async move {
             while let Ok((method, params)) = events.recv().await {
@@ -199,11 +146,7 @@ impl BrowserAgent {
                 value: Some(value),
                 error: None,
             },
-            Err(e) => ActionResult {
-                success: false,
-                value: None,
-                error: Some(e.to_string()),
-            },
+            Err(e) => ActionResult::failed(e),
         }
     }
 
@@ -221,11 +164,7 @@ impl BrowserAgent {
     pub async fn execute_json(&self, json_str: &str) -> ActionResult {
         match parse_action(json_str) {
             Ok(action) => self.execute(action).await,
-            Err(e) => ActionResult {
-                success: false,
-                value: None,
-                error: Some(e.to_string()),
-            },
+            Err(e) => ActionResult::failed(e),
         }
     }
 
@@ -403,7 +342,7 @@ impl BrowserAgent {
                     if std::time::Instant::now() >= deadline {
                         return Err(CdpError::Timeout);
                     }
-                    tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+                    tokio::time::sleep(std::time::Duration::from_millis(SELECTOR_POLL_MS)).await;
                 }
             }
 
@@ -429,206 +368,5 @@ impl BrowserAgent {
                     .await
             }
         }
-    }
-}
-
-fn key_info(key: &str) -> (&str, u32) {
-    match key {
-        "Enter" => ("Enter", 13),
-        "Tab" => ("Tab", 9),
-        "Backspace" => ("Backspace", 8),
-        "Delete" => ("Delete", 46),
-        "Escape" => ("Escape", 27),
-        " " | "Space" => ("Space", 32),
-        "ArrowLeft" => ("ArrowLeft", 37),
-        "ArrowUp" => ("ArrowUp", 38),
-        "ArrowRight" => ("ArrowRight", 39),
-        "ArrowDown" => ("ArrowDown", 40),
-        _ => (key, 0),
-    }
-}
-
-#[derive(Debug, Deserialize)]
-struct RawAction {
-    action: String,
-    url: Option<String>,
-    selector: Option<String>,
-    value: Option<String>,
-    text: Option<String>,
-    key: Option<String>,
-    path: Option<String>,
-    ms: Option<u64>,
-    x: Option<f64>,
-    y: Option<f64>,
-    expression: Option<String>,
-    width: Option<i32>,
-    height: Option<i32>,
-    mobile: Option<bool>,
-    timeout_ms: Option<u64>,
-}
-
-fn parse_action(json_str: &str) -> Result<BrowserAction> {
-    let a: RawAction = serde_json::from_str(json_str)?;
-
-    macro_rules! need {
-        ($field:expr, $name:literal) => {
-            $field.ok_or_else(|| CdpError::Protocol(concat!($name, " is required").into()))?
-        };
-    }
-
-    Ok(match a.action.as_str() {
-        "navigate" => BrowserAction::Navigate {
-            url: need!(a.url, "url"),
-        },
-        "back" | "go_back" => BrowserAction::GoBack,
-        "forward" | "go_forward" => BrowserAction::GoForward,
-        "reload" => BrowserAction::Reload,
-        "click" => BrowserAction::Click {
-            selector: a.selector,
-            x: a.x,
-            y: a.y,
-        },
-        "type" => BrowserAction::Type {
-            text: need!(a.text, "text"),
-            selector: a.selector,
-        },
-        "fill" => BrowserAction::Fill {
-            selector: need!(a.selector, "selector"),
-            value: need!(a.value, "value"),
-        },
-        "submit" => BrowserAction::Submit {
-            selector: a.selector,
-        },
-        "press_key" | "key" => BrowserAction::PressKey {
-            key: need!(a.key, "key"),
-        },
-        "get_title" | "title" => BrowserAction::GetTitle,
-        "get_url" | "url" => BrowserAction::GetUrl,
-        "get_text" | "text" => BrowserAction::GetText,
-        "get_content" | "content" => BrowserAction::GetContent {
-            selector: a.selector,
-        },
-        "get_links" | "links" => BrowserAction::GetLinks,
-        "get_attributes" | "attributes" => BrowserAction::GetAttributes {
-            selector: need!(a.selector, "selector"),
-        },
-        "exists" => BrowserAction::Exists {
-            selector: need!(a.selector, "selector"),
-        },
-        "screenshot" => BrowserAction::Screenshot { path: a.path },
-        "evaluate" | "eval" => BrowserAction::Evaluate {
-            expression: need!(a.expression, "expression"),
-        },
-        "wait" => BrowserAction::Wait {
-            ms: need!(a.ms, "ms"),
-        },
-        "wait_for_selector" => BrowserAction::WaitForSelector {
-            selector: need!(a.selector, "selector"),
-            timeout_ms: a.timeout_ms.unwrap_or(5000),
-        },
-        "scroll" => BrowserAction::Scroll {
-            x: a.x.unwrap_or(0.0),
-            y: a.y.unwrap_or(0.0),
-        },
-        "set_viewport" => BrowserAction::SetViewport {
-            width: need!(a.width, "width"),
-            height: need!(a.height, "height"),
-            mobile: a.mobile.unwrap_or(false),
-        },
-        "get_metrics" | "metrics" => BrowserAction::GetMetrics,
-        other => return Err(CdpError::Protocol(format!("unknown action: {other}"))),
-    })
-}
-
-/// Fluent builder for a sequence of [`BrowserAction`]s, run with
-/// [`BrowserAgent::execute_many`].
-pub struct ActionBuilder {
-    actions: Vec<BrowserAction>,
-}
-
-impl ActionBuilder {
-    /// Start an empty action sequence.
-    pub fn new() -> Self {
-        ActionBuilder {
-            actions: Vec::new(),
-        }
-    }
-
-    /// Append [`BrowserAction::Navigate`].
-    pub fn navigate(mut self, url: &str) -> Self {
-        self.actions
-            .push(BrowserAction::Navigate { url: url.into() });
-        self
-    }
-
-    /// Append [`BrowserAction::Wait`].
-    pub fn wait(mut self, ms: u64) -> Self {
-        self.actions.push(BrowserAction::Wait { ms });
-        self
-    }
-
-    /// Append [`BrowserAction::Click`] targeting a CSS selector.
-    pub fn click(mut self, selector: &str) -> Self {
-        self.actions.push(BrowserAction::Click {
-            selector: Some(selector.into()),
-            x: None,
-            y: None,
-        });
-        self
-    }
-
-    /// Append [`BrowserAction::Fill`].
-    pub fn fill(mut self, selector: &str, value: &str) -> Self {
-        self.actions.push(BrowserAction::Fill {
-            selector: selector.into(),
-            value: value.into(),
-        });
-        self
-    }
-
-    /// Append [`BrowserAction::PressKey`].
-    pub fn press_key(mut self, key: &str) -> Self {
-        self.actions
-            .push(BrowserAction::PressKey { key: key.into() });
-        self
-    }
-
-    /// Append [`BrowserAction::Screenshot`].
-    pub fn screenshot(mut self, path: Option<&str>) -> Self {
-        self.actions.push(BrowserAction::Screenshot {
-            path: path.map(Into::into),
-        });
-        self
-    }
-
-    /// Append [`BrowserAction::Evaluate`].
-    pub fn evaluate(mut self, expr: &str) -> Self {
-        self.actions.push(BrowserAction::Evaluate {
-            expression: expr.into(),
-        });
-        self
-    }
-
-    /// Append [`BrowserAction::Scroll`].
-    pub fn scroll(mut self, x: f64, y: f64) -> Self {
-        self.actions.push(BrowserAction::Scroll { x, y });
-        self
-    }
-
-    /// Append [`BrowserAction::GetTitle`].
-    pub fn get_title(mut self) -> Self {
-        self.actions.push(BrowserAction::GetTitle);
-        self
-    }
-
-    /// Finish building and return the action sequence.
-    pub fn build(self) -> Vec<BrowserAction> {
-        self.actions
-    }
-}
-
-impl Default for ActionBuilder {
-    fn default() -> Self {
-        Self::new()
     }
 }

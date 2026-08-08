@@ -74,6 +74,37 @@ struct Pool {
     semaphore: tokio::sync::Semaphore,
 }
 
+/// Run one task, retrying up to `retries` more times after a failure.
+///
+/// Returns the outcome alongside how long every attempt took together and
+/// how many attempts it needed, which is what the monitor reports.
+async fn run_with_retries<D, R, F, Fut>(
+    client: Arc<CdpClient>,
+    data: D,
+    task: &F,
+    retries: u32,
+) -> (std::result::Result<R, String>, Duration, u32)
+where
+    D: Clone,
+    F: Fn(Arc<CdpClient>, D) -> Fut,
+    Fut: Future<Output = Result<R>>,
+{
+    let start = Instant::now();
+    let mut attempts = 0u32;
+
+    loop {
+        attempts += 1;
+        match task(Arc::clone(&client), data.clone()).await {
+            Ok(r) => return (Ok(r), start.elapsed(), attempts),
+            Err(e) => {
+                if attempts > retries {
+                    return (Err(e.to_string()), start.elapsed(), attempts);
+                }
+            }
+        }
+    }
+}
+
 /// A pool of `config.concurrency` pre-created tabs shared across tasks, with
 /// per-task retries. Workers are reused between tasks, avoiding per-task
 /// create/close overhead.
@@ -219,33 +250,6 @@ impl Cluster {
         let clients = self.pool.clients.lock().await;
         for client in clients.iter() {
             let _ = client.close().await;
-        }
-    }
-}
-
-async fn run_with_retries<D, R, F, Fut>(
-    client: Arc<CdpClient>,
-    data: D,
-    task: &F,
-    retries: u32,
-) -> (std::result::Result<R, String>, Duration, u32)
-where
-    D: Clone,
-    F: Fn(Arc<CdpClient>, D) -> Fut,
-    Fut: Future<Output = Result<R>>,
-{
-    let start = Instant::now();
-    let mut attempts = 0u32;
-
-    loop {
-        attempts += 1;
-        match task(Arc::clone(&client), data.clone()).await {
-            Ok(r) => return (Ok(r), start.elapsed(), attempts),
-            Err(e) => {
-                if attempts > retries {
-                    return (Err(e.to_string()), start.elapsed(), attempts);
-                }
-            }
         }
     }
 }

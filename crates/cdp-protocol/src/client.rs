@@ -21,11 +21,21 @@ use tracing::{debug, warn};
 use crate::error::{CdpError, Result};
 use crate::types::*;
 
-type PendingMap = Arc<Mutex<HashMap<u64, oneshot::Sender<Result<Value>>>>>;
-
 /// Default per-command timeout, in milliseconds. Override with
 /// [`CdpClient::set_command_timeout`]. A value of `0` disables the timeout.
 const DEFAULT_COMMAND_TIMEOUT_MS: u64 = 30_000;
+
+type PendingMap = Arc<Mutex<HashMap<u64, oneshot::Sender<Result<Value>>>>>;
+
+/// Decode the base64 payload a screenshot command answers with.
+fn png_bytes_from(result: &Value) -> Result<Vec<u8>> {
+    let data = result["data"]
+        .as_str()
+        .ok_or_else(|| CdpError::Protocol("screenshot response has no data".into()))?;
+    base64::engine::general_purpose::STANDARD
+        .decode(data)
+        .map_err(|e| CdpError::Protocol(e.to_string()))
+}
 
 /// A single WebSocket session to one Chrome debugging target.
 ///
@@ -462,13 +472,4 @@ impl CdpClient {
             .json()
             .await?)
     }
-}
-
-fn png_bytes_from(result: &Value) -> Result<Vec<u8>> {
-    let data = result["data"]
-        .as_str()
-        .ok_or_else(|| CdpError::Protocol("screenshot response has no data".into()))?;
-    base64::engine::general_purpose::STANDARD
-        .decode(data)
-        .map_err(|e| CdpError::Protocol(e.to_string()))
 }
