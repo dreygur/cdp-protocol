@@ -273,6 +273,7 @@ cargo run -p cdp-driver --example basic        # low-level CdpClient
 cargo run -p cdp-driver --example agent        # BrowserAgent + ActionBuilder
 cargo run -p cdp-driver --example industrial   # 100 pages in parallel with JoinSet
 cargo run -p cdp-driver --example cluster      # worker pool with retries
+cargo run -p cdp-driver --example raw          # call/call_raw into unwrapped domains
 ```
 
 ## Node / Deno / Bun

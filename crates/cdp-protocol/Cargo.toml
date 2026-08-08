@@ -22,6 +22,9 @@ name = "industrial"
 [[example]]
 name = "cluster"
 
+[[example]]
+name = "raw"
+
 [dependencies]
 tokio = { version = "1", features = ["full"] }
 tokio-tungstenite = { version = "0.29", features = ["rustls-tls-webpki-roots"] }
