@@ -11,6 +11,8 @@ use std::time::Duration;
 
 use base64::Engine;
 use futures_util::{SinkExt, StreamExt};
+use serde::de::DeserializeOwned;
+use serde::Serialize;
 use serde_json::{json, Value};
 use tokio::sync::{broadcast, oneshot, Mutex};
 use tokio_tungstenite::{connect_async, tungstenite::Message};
@@ -169,6 +171,50 @@ impl CdpClient {
                 Err(CdpError::Timeout)
             }
         }
+    }
+
+    /// Send any CDP command and deserialize its result into `R`.
+    ///
+    /// The typed wrappers on this client cover only a small, curated slice of the
+    /// DevTools Protocol; this is the escape hatch for everything else, including
+    /// domains this crate has no wrappers for at all (`Target`, `Storage`,
+    /// `Debugger`, ...). `params` must serialize to a JSON object, since that is
+    /// what CDP expects; use `json!({})` for commands that take no parameters.
+    ///
+    /// ```no_run
+    /// # use cdp_driver::CdpClient;
+    /// # use serde::Deserialize;
+    /// # use serde_json::json;
+    /// #[derive(Deserialize)]
+    /// #[serde(rename_all = "camelCase")]
+    /// struct CreateTarget {
+    ///     target_id: String,
+    /// }
+    ///
+    /// # async fn run(client: &CdpClient) -> cdp_driver::Result<()> {
+    /// let created: CreateTarget = client
+    ///     .call("Target.createTarget", json!({ "url": "about:blank" }))
+    ///     .await?;
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub async fn call<P: Serialize, R: DeserializeOwned>(
+        &self,
+        method: &str,
+        params: P,
+    ) -> Result<R> {
+        let result = self.call_raw(method, serde_json::to_value(params)?).await?;
+        Ok(serde_json::from_value(result)?)
+    }
+
+    /// Send any CDP command and return its raw `result` object unparsed.
+    ///
+    /// Prefer [`call`](Self::call) when you have a type to deserialize into. This is
+    /// the lower-level form, useful for exploring a response's shape or for commands
+    /// whose result you only want to index into. Commands that return no result
+    /// yield [`Value::Null`].
+    pub async fn call_raw(&self, method: &str, params: Value) -> Result<Value> {
+        self.send_command(method, params).await
     }
 
     /// Subscribe to raw CDP events as `(method, params)` pairs.

@@ -5,6 +5,8 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
+use serde::de::DeserializeOwned;
+use serde::Serialize;
 use serde_json::Value;
 use tokio::runtime::Runtime;
 
@@ -57,6 +59,14 @@ impl CdpClient {
 
     pub fn enable_domain(&self, domain: &str) -> Result<()> {
         self.rt.block_on(self.inner.enable_domain(domain))
+    }
+
+    pub fn call<P: Serialize, R: DeserializeOwned>(&self, method: &str, params: P) -> Result<R> {
+        self.rt.block_on(self.inner.call(method, params))
+    }
+
+    pub fn call_raw(&self, method: &str, params: Value) -> Result<Value> {
+        self.rt.block_on(self.inner.call_raw(method, params))
     }
 
     pub fn navigate(&self, url: &str) -> Result<NavigationResult> {
