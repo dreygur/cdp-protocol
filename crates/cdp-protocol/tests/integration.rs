@@ -10,7 +10,9 @@
 //! CI launches headless Chrome first; see `.github/workflows/integration.yml`.
 //! Override the endpoint with `CDP_HOST` / `CDP_PORT`.
 
-use cdp_driver::{BrowserAction, BrowserAgent, CdpClient};
+use cdp_driver::{BrowserAction, BrowserAgent, CdpClient, CdpError};
+use serde::Deserialize;
+use serde_json::json;
 
 fn host() -> String {
     std::env::var("CDP_HOST").unwrap_or_else(|_| "localhost".to_string())
@@ -73,4 +75,60 @@ async fn agent_navigate_and_screenshot() {
         .execute(BrowserAction::Screenshot { path: None })
         .await;
     assert!(shot.is_success(), "screenshot failed: {shot}");
+}
+
+/// The shape `Browser.getVersion` answers with, of which we need one field.
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct BrowserVersionResult {
+    product: String,
+}
+
+#[tokio::test]
+#[ignore = "requires a running Chrome on the debugging port"]
+async fn raw_call_reaches_a_domain_with_no_wrapper() {
+    // Browser and Target have no typed wrappers in this crate, so this only
+    // works through the raw escape hatch. It is the half `raw_call.rs` cannot
+    // check: that real Chrome accepts what we put on the wire.
+    let client = CdpClient::connect_to_page(&host(), port())
+        .await
+        .expect("connect to page target");
+
+    let version: BrowserVersionResult = client
+        .call("Browser.getVersion", json!({}))
+        .await
+        .expect("Browser.getVersion");
+    assert!(
+        version.product.contains('/'),
+        "expected a product like Chrome/120.0.0.0, got {:?}",
+        version.product
+    );
+
+    let targets = client
+        .call_raw("Target.getTargets", json!({}))
+        .await
+        .expect("Target.getTargets");
+    assert!(
+        targets["targetInfos"].is_array(),
+        "expected targetInfos to be an array, got {targets}"
+    );
+}
+
+#[tokio::test]
+#[ignore = "requires a running Chrome on the debugging port"]
+async fn raw_call_surfaces_a_real_protocol_error() {
+    // Chrome's own rejection of an unknown method, not a mock server's.
+    let client = CdpClient::connect_to_page(&host(), port())
+        .await
+        .expect("connect to page target");
+
+    let failure = client
+        .call_raw("Nonsense.command", json!({}))
+        .await
+        .expect_err("Chrome must reject an unknown method");
+
+    assert!(
+        matches!(failure, CdpError::Protocol(_)),
+        "expected CdpError::Protocol, got {failure:?}"
+    );
 }
