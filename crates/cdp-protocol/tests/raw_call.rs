@@ -264,3 +264,27 @@ async fn a_generated_constant_carries_the_method_name_to_the_wire() {
     assert_eq!(log[0].method, "Target.createTarget");
     assert_eq!(log[1].method, "Storage.clearDataForOrigin");
 }
+
+#[tokio::test]
+async fn a_command_in_flight_when_the_socket_drops_fails_at_once() {
+    // Without this the caller would wait out the whole timeout for a reply that
+    // can never arrive, so the client fails everything still pending instead.
+    let (client, _server) = client_answering(|_| Reply::Disconnect).await;
+    client.set_command_timeout(PATIENT);
+
+    let failure = tokio::time::timeout(
+        Duration::from_secs(2),
+        client.call_raw("Page.navigate", json!({ "url": "about:blank" })),
+    )
+    .await
+    .expect("the call must resolve well inside the command timeout")
+    .expect_err("a dropped socket cannot produce a result");
+
+    match failure {
+        CdpError::Protocol(message) => assert!(
+            message.contains("connection closed"),
+            "expected a connection-closed message, got {message}"
+        ),
+        other => panic!("expected CdpError::Protocol, got {other:?}"),
+    }
+}

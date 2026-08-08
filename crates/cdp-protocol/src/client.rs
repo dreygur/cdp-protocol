@@ -10,12 +10,14 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use base64::Engine;
+use futures_util::{Sink, Stream};
 use futures_util::{SinkExt, StreamExt};
 use serde::de::DeserializeOwned;
 use serde::Serialize;
 use serde_json::{json, Value};
-use tokio::sync::{broadcast, oneshot, Mutex};
-use tokio_tungstenite::{connect_async, tungstenite::Message};
+use tokio::sync::{broadcast, mpsc, oneshot, Mutex};
+use tokio_tungstenite::connect_async;
+use tokio_tungstenite::tungstenite::{Error as WsError, Message};
 use tracing::{debug, warn};
 
 use crate::error::{CdpError, Result};
@@ -25,7 +27,15 @@ use crate::types::*;
 /// [`CdpClient::set_command_timeout`]. A value of `0` disables the timeout.
 const DEFAULT_COMMAND_TIMEOUT_MS: u64 = 30_000;
 
+/// How many events may queue for a subscriber before the oldest are dropped.
+const EVENT_BACKLOG: usize = 256;
+
+/// What every in-flight command is told when the socket goes away.
+const CONNECTION_CLOSED: &str = "connection closed";
+
 type PendingMap = Arc<Mutex<HashMap<u64, oneshot::Sender<Result<Value>>>>>;
+
+type Events = broadcast::Sender<(String, Value)>;
 
 /// Decode the base64 payload a screenshot command answers with.
 fn png_bytes_from(result: &Value) -> Result<Vec<u8>> {
@@ -35,6 +45,89 @@ fn png_bytes_from(result: &Value) -> Result<Vec<u8>> {
     base64::engine::general_purpose::STANDARD
         .decode(data)
         .map_err(|e| CdpError::Protocol(e.to_string()))
+}
+
+/// The reply a command frame carries: its result, or the error it reports.
+fn reply_in(frame: &Value, id: u64) -> Result<Value> {
+    let Some(error) = frame.get("error") else {
+        debug!(id, "recv");
+        return Ok(frame.get("result").cloned().unwrap_or(Value::Null));
+    };
+    let message = error["message"]
+        .as_str()
+        .unwrap_or("protocol error")
+        .to_string();
+    warn!(id, %message, "protocol error");
+    Err(CdpError::Protocol(message))
+}
+
+/// Hand a reply to whoever is waiting on `id`, if anyone still is. Nobody is
+/// waiting once a command has timed out, and that is not an error.
+async fn deliver(pending: &PendingMap, id: u64, reply: Result<Value>) {
+    if let Some(waiting) = pending.lock().await.remove(&id) {
+        let _ = waiting.send(reply);
+    }
+}
+
+/// Publish an unsolicited frame to event subscribers.
+fn publish(events: &Events, frame: &Value) {
+    let Some(method) = frame.get("method").and_then(Value::as_str) else {
+        return;
+    };
+    debug!(%method, "event");
+    let params = frame.get("params").cloned().unwrap_or(Value::Null);
+    let _ = events.send((method.to_owned(), params));
+}
+
+/// Route one text frame. A frame carrying an `id` answers a command; anything
+/// else is an event. Frames that are not JSON at all are dropped.
+async fn route(text: &str, pending: &PendingMap, events: &Events) {
+    let Ok(frame) = serde_json::from_str::<Value>(text) else {
+        return;
+    };
+    match frame.get("id").and_then(Value::as_u64) {
+        Some(id) => deliver(pending, id, reply_in(&frame, id)).await,
+        None => publish(events, &frame),
+    }
+}
+
+/// Fail every command still awaiting a reply.
+async fn abandon_pending(pending: &PendingMap) {
+    for (_, waiting) in pending.lock().await.drain() {
+        let _ = waiting.send(Err(CdpError::Protocol(CONNECTION_CLOSED.into())));
+    }
+}
+
+/// Forward queued commands to the socket until the client is dropped or the
+/// socket refuses them.
+async fn write_outgoing<S>(mut sink: S, mut outgoing: mpsc::UnboundedReceiver<Message>)
+where
+    S: Sink<Message> + Unpin,
+{
+    while let Some(message) = outgoing.recv().await {
+        if sink.send(message).await.is_err() {
+            break;
+        }
+    }
+}
+
+/// Demultiplex the socket for the client's lifetime, sending replies to their
+/// callers and events to subscribers.
+///
+/// However the stream ends, whether closed cleanly, failed, or simply exhausted,
+/// the commands still in flight are failed rather than left to time out.
+async fn read_incoming<S>(mut stream: S, pending: PendingMap, events: Events)
+where
+    S: Stream<Item = std::result::Result<Message, WsError>> + Unpin,
+{
+    while let Some(message) = stream.next().await {
+        match message {
+            Ok(Message::Text(text)) => route(&text, &pending, &events).await,
+            Ok(Message::Close(_)) | Err(_) => break,
+            _ => {}
+        }
+    }
+    abandon_pending(&pending).await;
 }
 
 /// A single WebSocket session to one Chrome debugging target.
@@ -58,70 +151,14 @@ impl CdpClient {
     pub async fn connect(ws_url: &str) -> Result<Self> {
         debug!(%ws_url, "connecting");
         let (ws_stream, _) = connect_async(ws_url).await?;
-        let (mut sink, mut stream) = ws_stream.split();
+        let (sink, stream) = ws_stream.split();
 
         let pending: PendingMap = Arc::new(Mutex::new(HashMap::new()));
-        let pending_clone = pending.clone();
+        let (events_tx, _) = broadcast::channel::<(String, Value)>(EVENT_BACKLOG);
+        let (tx, outgoing) = mpsc::unbounded_channel::<Message>();
 
-        let (events_tx, _) = broadcast::channel::<(String, Value)>(256);
-        let events_tx_clone = events_tx.clone();
-
-        let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<Message>();
-
-        tokio::spawn(async move {
-            while let Some(msg) = rx.recv().await {
-                if sink.send(msg).await.is_err() {
-                    break;
-                }
-            }
-        });
-
-        tokio::spawn(async move {
-            while let Some(msg) = stream.next().await {
-                match msg {
-                    Ok(Message::Text(text)) => {
-                        let Ok(val) = serde_json::from_str::<Value>(&text) else {
-                            continue;
-                        };
-                        let Some(id) = val.get("id").and_then(|v| v.as_u64()) else {
-                            if let (Some(method), params) = (
-                                val.get("method")
-                                    .and_then(|v| v.as_str())
-                                    .map(str::to_owned),
-                                val.get("params").cloned().unwrap_or(Value::Null),
-                            ) {
-                                debug!(%method, "event");
-                                let _ = events_tx_clone.send((method, params));
-                            }
-                            continue;
-                        };
-                        let outcome = if val.get("error").is_some() {
-                            let msg = val["error"]["message"]
-                                .as_str()
-                                .unwrap_or("protocol error")
-                                .to_string();
-                            warn!(id, %msg, "protocol error");
-                            Err(CdpError::Protocol(msg))
-                        } else {
-                            debug!(id, "recv");
-                            Ok(val.get("result").cloned().unwrap_or(Value::Null))
-                        };
-                        let mut map = pending_clone.lock().await;
-                        if let Some(tx) = map.remove(&id) {
-                            let _ = tx.send(outcome);
-                        }
-                    }
-                    Ok(Message::Close(_)) | Err(_) => {
-                        let mut map = pending_clone.lock().await;
-                        for (_, tx) in map.drain() {
-                            let _ = tx.send(Err(CdpError::Protocol("connection closed".into())));
-                        }
-                        break;
-                    }
-                    _ => {}
-                }
-            }
-        });
+        tokio::spawn(write_outgoing(sink, outgoing));
+        tokio::spawn(read_incoming(stream, pending.clone(), events_tx.clone()));
 
         Ok(CdpClient {
             tx,

@@ -39,6 +39,8 @@ pub enum Reply {
     Error { code: i64, message: String },
     /// Answer with nothing at all, leaving the client to time out.
     Silence,
+    /// Drop the socket without answering, as a browser that exits mid-command does.
+    Disconnect,
 }
 
 /// The test's decision procedure: given a command, produce a reply.
@@ -68,14 +70,15 @@ fn parse_command(text: &str) -> Option<Command> {
     })
 }
 
-/// Render a reply into the frame Chrome would send, or `None` for [`Reply::Silence`].
-fn render_reply(id: u64, reply: Reply) -> Option<String> {
+/// Render a reply into the frame Chrome would send. `None` means send nothing,
+/// which covers both staying silent and hanging up.
+fn render_reply(id: u64, reply: &Reply) -> Option<String> {
     let envelope = match reply {
         Reply::Result(result) => json!({ "id": id, "result": result }),
         Reply::Error { code, message } => {
             json!({ "id": id, "error": { "code": code, "message": message } })
         }
-        Reply::Silence => return None,
+        Reply::Silence | Reply::Disconnect => return None,
     };
     Some(envelope.to_string())
 }
@@ -94,7 +97,11 @@ async fn serve_connection(stream: tokio::net::TcpStream, respond: Responder) {
         let Some(command) = parse_command(&text) else {
             continue;
         };
-        if let Some(frame) = render_reply(command.id, respond(&command)) {
+        let reply = respond(&command);
+        if matches!(reply, Reply::Disconnect) {
+            return;
+        }
+        if let Some(frame) = render_reply(command.id, &reply) {
             if sink.send(Message::Text(frame.into())).await.is_err() {
                 return;
             }
