@@ -13,6 +13,7 @@ pub mod docs;
 pub mod names;
 pub mod render;
 pub mod schema;
+pub mod types;
 
 use std::collections::BTreeMap;
 use std::fs;
