@@ -233,3 +233,86 @@ async fn eval_of_an_expression_that_throws_fails() {
         .expect("an expression that produced a value did not throw");
     assert_eq!(empty, "", "an empty result is still a result");
 }
+
+/// The shape `Target.createTarget` answers with, of which we need one field.
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct CreatedTarget {
+    target_id: String,
+}
+
+/// What the tab opened for the session navigates to. Its title is how a later
+/// assertion tells the two tabs apart.
+const SECOND_TAB: &str = "data:text/html,<title>second</title><h1>second</h1>";
+
+/// What the tab the client connected to shows for the whole test.
+const FIRST_TAB: &str = "data:text/html,<title>first</title><h1>first</h1>";
+
+#[tokio::test]
+#[ignore = "requires a running Chrome on the debugging port"]
+async fn a_session_drives_a_second_tab_and_leaves_the_connected_one_alone() {
+    // The point of a session: one socket, two tabs, and commands that land in the
+    // tab they were addressed to. Nothing here is reachable through call_raw
+    // alone, because the method names are ordinary and the envelope is not.
+    let client = CdpClient::connect_to_page(&host(), port())
+        .await
+        .expect("connect to page target");
+    for domain in ["Page", "Runtime"] {
+        client.enable_domain(domain).await.expect("enable domain");
+    }
+    client
+        .navigate_and_wait(FIRST_TAB, 10_000)
+        .await
+        .expect("navigate the connected tab");
+
+    let created: CreatedTarget = client
+        .call("Target.createTarget", json!({ "url": "about:blank" }))
+        .await
+        .expect("Target.createTarget");
+
+    let session = client
+        .attach_to_target(&created.target_id)
+        .await
+        .expect("attach to the second tab");
+    for domain in ["Page", "Runtime"] {
+        session
+            .enable_domain(domain)
+            .await
+            .expect("enable domain in the session");
+    }
+
+    let (loaded, navigated) = tokio::join!(
+        session.wait_for_event("Page.loadEventFired", 10_000),
+        session.call_raw("Page.navigate", json!({ "url": SECOND_TAB })),
+    );
+    navigated.expect("navigate inside the session");
+    loaded.expect("the second tab should raise its own load event");
+
+    let evaluated = session
+        .call_raw(
+            "Runtime.evaluate",
+            json!({ "expression": "document.title", "returnByValue": true }),
+        )
+        .await
+        .expect("evaluate inside the session");
+    assert_eq!(
+        evaluated["result"]["value"], "second",
+        "the session's commands should have landed in the tab it attached to"
+    );
+
+    let untouched = client.eval("document.title").await.expect("eval title");
+    assert_eq!(
+        untouched, "first",
+        "driving a session must not disturb the tab the client connected to"
+    );
+
+    session.detach().await.expect("detach from the second tab");
+
+    let _ = client
+        .call_raw(
+            "Target.closeTarget",
+            json!({ "targetId": created.target_id }),
+        )
+        .await
+        .expect("the connection must outlive the session it carried");
+}
