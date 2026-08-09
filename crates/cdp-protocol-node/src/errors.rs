@@ -14,6 +14,9 @@ pub(crate) fn error_code(e: &CdpError) -> &'static str {
         CdpError::Json(_) => "JSON",
         CdpError::Io(_) => "IO",
         CdpError::InvalidUrl(_) => "INVALID_URL",
+        // Both kinds stay "PROTOCOL" so JS callers already branching on that
+        // prefix keep working; the numeric CDP code is in the message.
+        CdpError::Browser { .. } => "PROTOCOL",
         CdpError::Protocol(_) => "PROTOCOL",
         CdpError::Timeout => "TIMEOUT",
         CdpError::NoTarget => "NO_TARGET",

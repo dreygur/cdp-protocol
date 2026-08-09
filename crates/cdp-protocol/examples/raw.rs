@@ -93,11 +93,13 @@ async fn clear_storage(client: &CdpClient) -> Result<()> {
     Ok(())
 }
 
-/// A method the browser does not know becomes `CdpError::Protocol`, carrying
-/// the browser's own message.
+/// A method the browser does not know becomes `CdpError::Browser`, carrying the
+/// browser's own message and CDP's numeric code for it.
 async fn show_rejection(client: &CdpClient) {
     match client.call_raw(NONSENSE, json!({})).await {
-        Err(CdpError::Protocol(message)) => println!("\nChrome rejected it: {message}"),
+        Err(CdpError::Browser { code, message, .. }) => {
+            println!("\nChrome rejected it with code {code}: {message}")
+        }
         Err(other) => println!("\nUnexpected error: {other}"),
         Ok(_) => println!("\nChrome accepted a method that does not exist"),
     }

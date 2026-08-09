@@ -15,8 +15,22 @@ pub enum CdpError {
     Io(std::io::Error),
     /// A URL supplied by the caller or returned by Chrome was malformed or missing.
     InvalidUrl(String),
-    /// Chrome returned a CDP protocol-level error, or a response was shaped
-    /// unexpectedly.
+    /// Chrome rejected a command. `code` is CDP's own numeric code (`-32601` for a
+    /// method the browser does not know, `-32602` for bad parameters), `message` is
+    /// what Chrome called the failure, and `data` is the extra detail some errors
+    /// carry. Branch on `code` rather than on the wording of `message`.
+    Browser {
+        /// CDP's numeric error code.
+        code: i64,
+        /// Chrome's description of what went wrong.
+        message: String,
+        /// Extra detail, present on some errors only.
+        data: Option<String>,
+    },
+    /// This crate could not make sense of an otherwise successful exchange: a
+    /// response of an unexpected shape, a command the transport could not send, or
+    /// an operation the browser reported as failed through its result rather than
+    /// through an error frame.
     Protocol(String),
     /// A command or event wait exceeded its configured timeout.
     Timeout,
@@ -32,6 +46,14 @@ impl fmt::Display for CdpError {
             CdpError::Json(e) => write!(f, "JSON error: {e}"),
             CdpError::Io(e) => write!(f, "IO error: {e}"),
             CdpError::InvalidUrl(s) => write!(f, "Invalid URL: {s}"),
+            CdpError::Browser {
+                code,
+                message,
+                data: Some(detail),
+            } => write!(f, "Browser error {code}: {message} ({detail})"),
+            CdpError::Browser { code, message, .. } => {
+                write!(f, "Browser error {code}: {message}")
+            }
             CdpError::Protocol(s) => write!(f, "Protocol error: {s}"),
             CdpError::Timeout => write!(f, "Operation timed out"),
             CdpError::NoTarget => write!(f, "No page target available"),

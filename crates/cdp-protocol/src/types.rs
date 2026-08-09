@@ -36,6 +36,9 @@ pub struct Target {
 }
 
 /// Result of `Page.navigate`.
+///
+/// A frame id and loader id come back even when the page never loaded, so
+/// `error_text` is the only field that says whether the navigation worked.
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct NavigationResult {
     /// The frame that started navigating.
@@ -44,6 +47,14 @@ pub struct NavigationResult {
     /// The loader driving this navigation, if one has been assigned yet.
     #[serde(rename = "loaderId")]
     pub loader_id: Option<String>,
+    /// Why the navigation failed, e.g. `"net::ERR_NAME_NOT_RESOLVED"`. Absent
+    /// when the navigation started successfully.
+    #[serde(rename = "errorText")]
+    pub error_text: Option<String>,
+    /// Whether the URL turned into a download instead of a page load. Older
+    /// Chrome builds omit the field, which reads as `false`.
+    #[serde(rename = "isDownload", default)]
+    pub is_download: bool,
 }
 
 /// A JS value as CDP's `Runtime` domain represents it.

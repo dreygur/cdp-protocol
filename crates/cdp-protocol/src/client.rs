@@ -33,6 +33,13 @@ const EVENT_BACKLOG: usize = 256;
 /// What every in-flight command is told when the socket goes away.
 const CONNECTION_CLOSED: &str = "connection closed";
 
+/// Stands in for the `code` of an error frame that carries none. CDP never uses
+/// zero itself, so it cannot be mistaken for a code Chrome actually reported.
+const UNREPORTED_ERROR_CODE: i64 = 0;
+
+/// What an error frame with no message of its own is called.
+const UNDESCRIBED_ERROR: &str = "protocol error";
+
 type PendingMap = Arc<Mutex<HashMap<u64, oneshot::Sender<Result<Value>>>>>;
 
 type Events = broadcast::Sender<(String, Value)>;
@@ -47,18 +54,67 @@ fn png_bytes_from(result: &Value) -> Result<Vec<u8>> {
         .map_err(|e| CdpError::Protocol(e.to_string()))
 }
 
+/// Judge a `Page.navigate` result. Chrome answers a navigation it could not
+/// perform with a frame id, a loader id and an `errorText`, so a result that
+/// looks complete still has to be read as a failure.
+fn navigation_outcome(url: &str, navigation: NavigationResult) -> Result<NavigationResult> {
+    match &navigation.error_text {
+        Some(reason) => Err(CdpError::Protocol(format!(
+            "navigation to {url} failed: {reason}"
+        ))),
+        None => Ok(navigation),
+    }
+}
+
+/// What to say about an expression that threw, given Chrome's `exceptionDetails`.
+///
+/// A thrown `Error` arrives as an object whose `description` is its message
+/// followed by a stack trace, so only the first line is kept. Anything else JS
+/// can throw (a string, a number) arrives as a plain `value` instead, and if
+/// Chrome sends neither, its own summary `text` is all there is.
+fn thrown_message(details: &Value) -> String {
+    let exception = &details["exception"];
+    if let Some(description) = exception["description"].as_str() {
+        return description
+            .lines()
+            .next()
+            .unwrap_or(description)
+            .to_string();
+    }
+    match &exception["value"] {
+        Value::Null => details["text"].as_str().unwrap_or("uncaught").to_string(),
+        Value::String(thrown) => thrown.clone(),
+        thrown => thrown.to_string(),
+    }
+}
+
+/// Read the error object Chrome answers a rejected command with. Only `message`
+/// is reliably present, so a frame carrying less still has to yield an error a
+/// caller can match on.
+fn browser_error_in(error: &Value) -> CdpError {
+    CdpError::Browser {
+        code: error["code"].as_i64().unwrap_or(UNREPORTED_ERROR_CODE),
+        message: error["message"]
+            .as_str()
+            .unwrap_or(UNDESCRIBED_ERROR)
+            .to_string(),
+        data: match &error["data"] {
+            Value::Null => None,
+            Value::String(detail) => Some(detail.clone()),
+            detail => Some(detail.to_string()),
+        },
+    }
+}
+
 /// The reply a command frame carries: its result, or the error it reports.
 fn reply_in(frame: &Value, id: u64) -> Result<Value> {
     let Some(error) = frame.get("error") else {
         debug!(id, "recv");
         return Ok(frame.get("result").cloned().unwrap_or(Value::Null));
     };
-    let message = error["message"]
-        .as_str()
-        .unwrap_or("protocol error")
-        .to_string();
-    warn!(id, %message, "protocol error");
-    Err(CdpError::Protocol(message))
+    let rejection = browser_error_in(error);
+    warn!(id, %rejection, "protocol error");
+    Err(rejection)
 }
 
 /// Hand a reply to whoever is waiting on `id`, if anyone still is. Nobody is
@@ -301,15 +357,22 @@ impl CdpClient {
     /// Navigate to `url`. Returns as soon as navigation starts, without waiting for
     /// the page to finish loading; use [`navigate_and_wait`](Self::navigate_and_wait)
     /// to block until `Page.loadEventFired`.
+    ///
+    /// A navigation Chrome refused (an unresolvable host, a refused connection, a
+    /// blocked request) is a [`CdpError::Protocol`] carrying Chrome's `errorText`,
+    /// not a successful result.
     pub async fn navigate(&self, url: &str) -> Result<NavigationResult> {
         let result = self
             .send_command("Page.navigate", json!({ "url": url }))
             .await?;
-        Ok(serde_json::from_value(result)?)
+        navigation_outcome(url, serde_json::from_value(result)?)
     }
 
     /// Navigate to `url` and wait for `Page.loadEventFired`, up to `timeout_ms`.
     /// Requires the `"Page"` domain to be enabled.
+    ///
+    /// Fails the same way [`navigate`](Self::navigate) does, before waiting for a
+    /// load event that a refused navigation would never fire.
     pub async fn navigate_and_wait(&self, url: &str, timeout_ms: u64) -> Result<NavigationResult> {
         let mut rx = self.events_tx.subscribe();
         let nav = self.navigate(url).await?;
@@ -327,12 +390,21 @@ impl CdpClient {
         .map_err(|_| CdpError::Timeout)?
     }
 
-    /// Evaluate a JS expression and return its result stringified. Prefer
-    /// [`evaluate`](Self::evaluate) when you need the structured result or exception
-    /// details.
+    /// Evaluate a JS expression and return its result stringified.
+    ///
+    /// An expression that throws is a [`CdpError::Protocol`] carrying the thrown
+    /// message, since a returned string cannot tell an empty result apart from a
+    /// failure. Use [`evaluate`](Self::evaluate) when you want the structured
+    /// result, or an exception as data rather than as an error.
     pub async fn eval(&self, expression: &str) -> Result<String> {
-        let result = self.evaluate(expression).await?;
-        Ok(result
+        let outcome = self.evaluate(expression).await?;
+        if let Some(details) = &outcome.exception_details {
+            return Err(CdpError::Protocol(format!(
+                "evaluation threw: {}",
+                thrown_message(details)
+            )));
+        }
+        Ok(outcome
             .result
             .value
             .map(|v| match v {

@@ -69,11 +69,39 @@ fn navigation_result_serialize_roundtrip() {
     let nav = NavigationResult {
         frame_id: "F1".into(),
         loader_id: None,
+        error_text: None,
+        is_download: false,
     };
     let v = serde_json::to_value(&nav).unwrap();
     assert_eq!(v["frameId"], "F1");
     let back: NavigationResult = serde_json::from_value(v).unwrap();
     assert_eq!(back.frame_id, "F1");
+}
+
+#[test]
+fn a_navigation_result_keeps_the_error_text_chrome_sent() {
+    // The exact frame Chrome answers a DNS failure with. Dropping errorText here
+    // is what made a failed navigation look like a successful one.
+    let json = r#"{
+        "errorText": "net::ERR_NAME_NOT_RESOLVED",
+        "frameId": "46AB4AD75BF7C3B9",
+        "isDownload": false,
+        "loaderId": "C1861D0F0F0F"
+    }"#;
+    let nav: NavigationResult = serde_json::from_str(json).unwrap();
+    assert_eq!(
+        nav.error_text.as_deref(),
+        Some("net::ERR_NAME_NOT_RESOLVED")
+    );
+    assert!(!nav.is_download);
+}
+
+#[test]
+fn a_navigation_result_without_the_download_flag_reads_as_not_a_download() {
+    let json = r#"{ "frameId": "F1", "loaderId": "L1" }"#;
+    let nav: NavigationResult = serde_json::from_str(json).unwrap();
+    assert!(nav.error_text.is_none());
+    assert!(!nav.is_download);
 }
 
 #[test]
@@ -83,5 +111,23 @@ fn error_display_is_stable() {
     assert_eq!(
         CdpError::Protocol("boom".into()).to_string(),
         "Protocol error: boom"
+    );
+    assert_eq!(
+        CdpError::Browser {
+            code: -32601,
+            message: "'Nonsense.command' wasn't found".into(),
+            data: None,
+        }
+        .to_string(),
+        "Browser error -32601: 'Nonsense.command' wasn't found"
+    );
+    assert_eq!(
+        CdpError::Browser {
+            code: -32602,
+            message: "Invalid parameters".into(),
+            data: Some("url: string value expected".into()),
+        }
+        .to_string(),
+        "Browser error -32602: Invalid parameters (url: string value expected)"
     );
 }

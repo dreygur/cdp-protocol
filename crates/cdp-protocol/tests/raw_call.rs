@@ -1,5 +1,6 @@
-//! What `CdpClient::call` and `CdpClient::call_raw` promise, checked against a
-//! mock CDP endpoint rather than a browser.
+//! What the client promises about what comes back over the wire, checked against
+//! a mock CDP endpoint rather than a browser: `call` and `call_raw`, plus the
+//! typed wrappers that have to judge a result rather than just return it.
 //!
 //! These run in a plain `cargo test`: no Chrome, no network, no fixed ports.
 //! The browser-facing half of the same contract lives in `integration.rs`.
@@ -9,11 +10,11 @@ mod mock_cdp;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use cdp_driver::{CdpClient, CdpError};
+use cdp_driver::{BrowserAction, BrowserAgent, CdpClient, CdpError};
 use serde::Deserialize;
 use serde_json::{json, Value};
 
-use mock_cdp::{Command, Reply, METHOD_NOT_FOUND};
+use mock_cdp::{Command, Reply, INVALID_PARAMS, METHOD_NOT_FOUND};
 
 /// Long enough that a loopback round trip is never the reason a test fails.
 const PATIENT: Duration = Duration::from_secs(5);
@@ -60,6 +61,52 @@ async fn client_recording(
 #[serde(rename_all = "camelCase")]
 struct CreatedTarget {
     target_id: String,
+}
+
+/// What Chrome 151 answers `Page.navigate` with for a host that does not resolve:
+/// a frame id and a loader id, exactly as a successful navigation has, and an
+/// `errorText` that is the only sign the page never loaded.
+fn a_navigation_chrome_refused() -> Value {
+    json!({
+        "errorText": "net::ERR_NAME_NOT_RESOLVED",
+        "frameId": "46AB4AD75BF7C3B9",
+        "isDownload": false,
+        "loaderId": "C1861D0F0F0F",
+    })
+}
+
+/// What Chrome answers when the navigation did start.
+fn a_navigation_that_started() -> Value {
+    json!({
+        "frameId": "46AB4AD75BF7C3B9",
+        "isDownload": false,
+        "loaderId": "C1861D0F0F0F",
+    })
+}
+
+/// What `Runtime.evaluate` answers for an expression that threw an `Error`. The
+/// `description` carries the message with the stack trace appended to it.
+fn an_evaluation_that_threw() -> Value {
+    json!({
+        "result": {
+            "type": "object",
+            "subtype": "error",
+            "className": "Error",
+            "description": "Error: boom\n    at <anonymous>:1:7",
+        },
+        "exceptionDetails": {
+            "exceptionId": 1,
+            "text": "Uncaught",
+            "lineNumber": 0,
+            "columnNumber": 6,
+            "exception": {
+                "type": "object",
+                "subtype": "error",
+                "className": "Error",
+                "description": "Error: boom\n    at <anonymous>:1:7",
+            },
+        },
+    })
 }
 
 #[tokio::test]
@@ -164,10 +211,13 @@ async fn a_command_with_no_result_yields_null() {
 }
 
 #[tokio::test]
-async fn a_protocol_error_becomes_cdp_error_protocol() {
+async fn a_rejected_command_becomes_a_browser_error_carrying_its_code() {
+    // The code is the point: a caller that wants to know "unknown method" should
+    // read -32601 rather than pattern-match on English.
     let (client, _server) = client_answering(|_| Reply::Error {
         code: METHOD_NOT_FOUND,
         message: "'Nonsense.command' wasn't found".to_string(),
+        data: None,
     })
     .await;
 
@@ -177,13 +227,86 @@ async fn a_protocol_error_becomes_cdp_error_protocol() {
         .expect_err("an error reply must not look like success");
 
     match failure {
-        CdpError::Protocol(message) => {
+        CdpError::Browser {
+            code,
+            message,
+            data,
+        } => {
+            assert_eq!(code, METHOD_NOT_FOUND);
             assert!(
                 message.contains("wasn't found"),
                 "the browser's message should survive: {message}"
             );
+            assert!(data.is_none(), "no data was sent, so none should appear");
         }
-        other => panic!("expected CdpError::Protocol, got {other:?}"),
+        other => panic!("expected CdpError::Browser, got {other:?}"),
+    }
+}
+
+#[tokio::test]
+async fn a_rejected_command_keeps_the_data_the_browser_attached() {
+    let (client, _server) = client_answering(|_| Reply::Error {
+        code: INVALID_PARAMS,
+        message: "Invalid parameters".to_string(),
+        data: Some("url: string value expected".to_string()),
+    })
+    .await;
+
+    let failure = client
+        .call_raw("Page.navigate", json!({ "url": 7 }))
+        .await
+        .expect_err("bad parameters must not look like success");
+
+    match failure {
+        CdpError::Browser { code, data, .. } => {
+            assert_eq!(code, INVALID_PARAMS);
+            assert_eq!(data.as_deref(), Some("url: string value expected"));
+        }
+        other => panic!("expected CdpError::Browser, got {other:?}"),
+    }
+}
+
+#[tokio::test]
+async fn a_browser_error_reads_as_one_sentence_with_its_code_and_data() {
+    // Display is what reaches logs and the Node bindings, so it is part of the
+    // contract, not a debugging convenience.
+    let (client, _server) = client_answering(|_| Reply::Error {
+        code: INVALID_PARAMS,
+        message: "Invalid parameters".to_string(),
+        data: Some("url: string value expected".to_string()),
+    })
+    .await;
+
+    let failure = client
+        .call_raw("Page.navigate", json!({}))
+        .await
+        .expect_err("bad parameters must not look like success");
+
+    assert_eq!(
+        failure.to_string(),
+        "Browser error -32602: Invalid parameters (url: string value expected)"
+    );
+}
+
+#[tokio::test]
+async fn an_error_frame_with_no_code_is_still_a_browser_error() {
+    // Nothing in CDP promises every field; an error frame stripped to its message
+    // must still fail the command rather than deserialize into a result.
+    let (client, _server) =
+        client_answering(|_| Reply::Frame(json!({ "error": { "message": "something broke" } })))
+            .await;
+
+    let failure = client
+        .call_raw("Page.navigate", json!({}))
+        .await
+        .expect_err("an error frame must not look like success");
+
+    match failure {
+        CdpError::Browser { code, message, .. } => {
+            assert_eq!(code, 0, "an absent code should not be invented");
+            assert_eq!(message, "something broke");
+        }
+        other => panic!("expected CdpError::Browser, got {other:?}"),
     }
 }
 
@@ -287,4 +410,216 @@ async fn a_command_in_flight_when_the_socket_drops_fails_at_once() {
         ),
         other => panic!("expected CdpError::Protocol, got {other:?}"),
     }
+}
+
+#[tokio::test]
+async fn a_navigation_chrome_refused_is_an_error_not_a_frame_id() {
+    // Chrome reports a DNS failure inside a result that otherwise looks like a
+    // successful navigation, so returning Ok here loses the failure entirely.
+    let (client, _server) =
+        client_answering(|_| Reply::Result(a_navigation_chrome_refused())).await;
+
+    let failure = client
+        .navigate("http://nonexistent.invalid.tld.example")
+        .await
+        .expect_err("a navigation that never loaded must not report success");
+
+    match failure {
+        CdpError::Protocol(message) => assert!(
+            message.contains("net::ERR_NAME_NOT_RESOLVED"),
+            "the reason Chrome gave should survive: {message}"
+        ),
+        other => panic!("expected CdpError::Protocol, got {other:?}"),
+    }
+}
+
+#[tokio::test]
+async fn a_navigation_that_started_returns_the_frame_and_loader_ids() {
+    let (client, _server) = client_answering(|_| Reply::Result(a_navigation_that_started())).await;
+
+    let navigation = client
+        .navigate("https://example.com")
+        .await
+        .expect("a navigation with no errorText should succeed");
+
+    assert_eq!(navigation.frame_id, "46AB4AD75BF7C3B9");
+    assert_eq!(navigation.loader_id.as_deref(), Some("C1861D0F0F0F"));
+    assert!(navigation.error_text.is_none());
+    assert!(!navigation.is_download);
+}
+
+#[tokio::test]
+async fn a_navigation_that_became_a_download_says_so() {
+    let (client, _server) = client_answering(|_| {
+        Reply::Result(json!({ "frameId": "F1", "loaderId": "L1", "isDownload": true }))
+    })
+    .await;
+
+    let navigation = client
+        .navigate("https://example.com/report.pdf")
+        .await
+        .expect("a download is not a navigation failure");
+
+    assert!(
+        navigation.is_download,
+        "isDownload must reach the caller, since no page load follows one"
+    );
+}
+
+#[tokio::test]
+async fn navigate_and_wait_fails_a_refused_navigation_without_waiting_for_a_load_event() {
+    // A refused navigation fires no load event, so waiting for one would burn the
+    // whole timeout before reporting a failure already known at the first reply.
+    let (client, _server) =
+        client_answering(|_| Reply::Result(a_navigation_chrome_refused())).await;
+
+    let failure = tokio::time::timeout(
+        Duration::from_secs(2),
+        client.navigate_and_wait("http://nonexistent.invalid.tld.example", 60_000),
+    )
+    .await
+    .expect("the failure should be reported at once, not after the wait")
+    .expect_err("a navigation that never loaded must not report success");
+
+    assert!(
+        failure.to_string().contains("net::ERR_NAME_NOT_RESOLVED"),
+        "the reason Chrome gave should survive: {failure}"
+    );
+}
+
+#[tokio::test]
+async fn an_agent_reports_a_refused_navigation_as_a_failed_action() {
+    let (client, _server) =
+        client_answering(|_| Reply::Result(a_navigation_chrome_refused())).await;
+    let agent = BrowserAgent::from_client(client);
+
+    let outcome = agent
+        .execute(BrowserAction::Navigate {
+            url: "http://nonexistent.invalid.tld.example".to_string(),
+        })
+        .await;
+
+    assert!(
+        !outcome.is_success(),
+        "a navigation that never loaded must not be a successful action: {outcome}"
+    );
+    assert!(
+        outcome
+            .error
+            .as_deref()
+            .unwrap_or_default()
+            .contains("net::ERR_NAME_NOT_RESOLVED"),
+        "the reason Chrome gave should reach the action result: {outcome}"
+    );
+}
+
+#[tokio::test]
+async fn eval_reports_a_thrown_error_instead_of_an_empty_string() {
+    // An expression that throws has no value, and "" is a value an expression can
+    // legitimately produce, so silence here is indistinguishable from success.
+    let (client, _server) = client_answering(|_| Reply::Result(an_evaluation_that_threw())).await;
+
+    let failure = client
+        .eval("throw new Error('boom')")
+        .await
+        .expect_err("an expression that threw must not report success");
+
+    match failure {
+        CdpError::Protocol(message) => {
+            assert!(
+                message.contains("Error: boom"),
+                "the thrown message should survive: {message}"
+            );
+            assert!(
+                !message.contains("at <anonymous>"),
+                "the stack trace belongs in evaluate, not in the message: {message}"
+            );
+        }
+        other => panic!("expected CdpError::Protocol, got {other:?}"),
+    }
+}
+
+#[tokio::test]
+async fn eval_reports_a_thrown_value_that_is_not_an_error() {
+    // JS can throw anything; a thrown string arrives as a plain value with no
+    // description to read the message out of.
+    let (client, _server) = client_answering(|_| {
+        Reply::Result(json!({
+            "result": { "type": "string", "value": "just a string" },
+            "exceptionDetails": {
+                "exceptionId": 2,
+                "text": "Uncaught",
+                "exception": { "type": "string", "value": "just a string" },
+            },
+        }))
+    })
+    .await;
+
+    let failure = client
+        .eval("throw 'just a string'")
+        .await
+        .expect_err("throwing a string is still throwing");
+
+    assert!(
+        failure.to_string().contains("just a string"),
+        "the thrown value should survive: {failure}"
+    );
+}
+
+#[tokio::test]
+async fn eval_still_returns_an_empty_string_when_that_is_the_answer() {
+    let (client, _server) =
+        client_answering(|_| Reply::Result(json!({ "result": { "type": "string", "value": "" } })))
+            .await;
+
+    let value = client
+        .eval("''")
+        .await
+        .expect("an expression that produced a value did not throw");
+
+    assert_eq!(value, "");
+}
+
+#[tokio::test]
+async fn evaluate_still_hands_back_exception_details_rather_than_failing() {
+    // eval turns a thrown expression into an error; evaluate is the escape hatch
+    // for callers that want the exception as data.
+    let (client, _server) = client_answering(|_| Reply::Result(an_evaluation_that_threw())).await;
+
+    let outcome = client
+        .evaluate("throw new Error('boom')")
+        .await
+        .expect("evaluate reports an exception through its result");
+
+    let details = outcome
+        .exception_details
+        .expect("exceptionDetails should be preserved");
+    assert_eq!(details["text"], "Uncaught");
+}
+
+#[tokio::test]
+async fn an_agent_action_whose_script_throws_reports_failure() {
+    let (client, _server) = client_answering(|_| Reply::Result(an_evaluation_that_threw())).await;
+    let agent = BrowserAgent::from_client(client);
+
+    let outcome = agent
+        .execute(BrowserAction::Click {
+            selector: Some("#go".to_string()),
+            x: None,
+            y: None,
+        })
+        .await;
+
+    assert!(
+        !outcome.is_success(),
+        "a click whose script threw must not be a successful action: {outcome}"
+    );
+    assert!(
+        outcome
+            .error
+            .as_deref()
+            .unwrap_or_default()
+            .contains("Error: boom"),
+        "the thrown message should reach the action result: {outcome}"
+    );
 }

@@ -14,6 +14,13 @@ use cdp_driver::{BrowserAction, BrowserAgent, CdpClient, CdpError};
 use serde::Deserialize;
 use serde_json::json;
 
+/// CDP's own code for a method the browser does not recognise. Chrome sends it
+/// for any unknown method, so it is stable enough to assert on.
+const METHOD_NOT_FOUND: i64 = -32601;
+
+/// A host no DNS will ever resolve, per RFC 6761's reserved `.invalid` TLD.
+const UNRESOLVABLE_URL: &str = "http://nonexistent.invalid.tld.example";
+
 fn host() -> String {
     std::env::var("CDP_HOST").unwrap_or_else(|_| "localhost".to_string())
 }
@@ -127,8 +134,102 @@ async fn raw_call_surfaces_a_real_protocol_error() {
         .await
         .expect_err("Chrome must reject an unknown method");
 
+    match failure {
+        CdpError::Browser { code, message, .. } => {
+            assert_eq!(code, METHOD_NOT_FOUND, "Chrome's own code for {message}");
+        }
+        other => panic!("expected CdpError::Browser, got {other:?}"),
+    }
+}
+
+#[tokio::test]
+#[ignore = "requires a running Chrome on the debugging port"]
+async fn a_navigation_to_a_host_that_does_not_resolve_fails() {
+    // Chrome answers this with a frame id, a loader id and an errorText, which is
+    // the whole reason navigate has to read the result rather than return it.
+    let client = CdpClient::connect_to_page(&host(), port())
+        .await
+        .expect("connect to page target");
+    client.enable_domain("Page").await.expect("enable Page");
+
+    let failure = client
+        .navigate(UNRESOLVABLE_URL)
+        .await
+        .expect_err("a page that cannot resolve must not report success");
+
     assert!(
-        matches!(failure, CdpError::Protocol(_)),
-        "expected CdpError::Protocol, got {failure:?}"
+        failure.to_string().contains("net::ERR_"),
+        "expected Chrome's network error text, got {failure}"
     );
+}
+
+#[tokio::test]
+#[ignore = "requires a running Chrome on the debugging port"]
+async fn navigate_and_wait_fails_a_navigation_that_never_loads() {
+    let client = CdpClient::connect_to_page(&host(), port())
+        .await
+        .expect("connect to page target");
+    client.enable_domain("Page").await.expect("enable Page");
+
+    let failure = client
+        .navigate_and_wait(UNRESOLVABLE_URL, 10_000)
+        .await
+        .expect_err("a page that cannot resolve must not report success");
+
+    assert!(
+        !matches!(failure, CdpError::Timeout),
+        "the failure should be Chrome's reason, not the wait expiring: {failure}"
+    );
+    assert!(
+        failure.to_string().contains("net::ERR_"),
+        "expected Chrome's network error text, got {failure}"
+    );
+}
+
+#[tokio::test]
+#[ignore = "requires a running Chrome on the debugging port"]
+async fn an_agent_navigation_to_a_host_that_does_not_resolve_reports_failure() {
+    let agent = BrowserAgent::connect(&host(), port())
+        .await
+        .expect("connect agent");
+
+    let outcome = agent
+        .execute(BrowserAction::Navigate {
+            url: UNRESOLVABLE_URL.to_string(),
+        })
+        .await;
+
+    assert!(
+        !outcome.is_success(),
+        "a navigation that never loaded must not be a successful action: {outcome}"
+    );
+}
+
+#[tokio::test]
+#[ignore = "requires a running Chrome on the debugging port"]
+async fn eval_of_an_expression_that_throws_fails() {
+    // The exception shape here is Chrome's, not a mock's: it is what decides
+    // whether the message a caller sees is useful.
+    let client = CdpClient::connect_to_page(&host(), port())
+        .await
+        .expect("connect to page target");
+    client
+        .enable_domain("Runtime")
+        .await
+        .expect("enable Runtime");
+
+    let failure = client
+        .eval("throw new Error('boom')")
+        .await
+        .expect_err("an expression that threw must not report success");
+    assert!(
+        failure.to_string().contains("boom"),
+        "expected the thrown message, got {failure}"
+    );
+
+    let empty = client
+        .eval("''")
+        .await
+        .expect("an expression that produced a value did not throw");
+    assert_eq!(empty, "", "an empty result is still a result");
 }

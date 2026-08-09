@@ -23,6 +23,9 @@ const ANY_PORT: u16 = 0;
 /// CDP's own code for a method the browser does not recognise.
 pub const METHOD_NOT_FOUND: i64 = -32601;
 
+/// CDP's own code for a command whose parameters the browser rejects.
+pub const INVALID_PARAMS: i64 = -32602;
+
 /// One command as it arrived from the client, already unwrapped from its envelope.
 #[derive(Debug, Clone)]
 pub struct Command {
@@ -35,8 +38,16 @@ pub struct Command {
 pub enum Reply {
     /// Answer with `{"id", "result": <value>}`.
     Result(Value),
-    /// Answer with `{"id", "error": {"code", "message"}}`.
-    Error { code: i64, message: String },
+    /// Answer with `{"id", "error": {"code", "message"}}`, carrying `"data"` too
+    /// when the test supplies the detail string some CDP errors come with.
+    Error {
+        code: i64,
+        message: String,
+        data: Option<String>,
+    },
+    /// Answer with `{"id"}` merged into a frame the test builds itself, for shapes
+    /// the other variants cannot express (an error frame missing its code, say).
+    Frame(Value),
     /// Answer with nothing at all, leaving the client to time out.
     Silence,
     /// Drop the socket without answering, as a browser that exits mid-command does.
@@ -75,8 +86,21 @@ fn parse_command(text: &str) -> Option<Command> {
 fn render_reply(id: u64, reply: &Reply) -> Option<String> {
     let envelope = match reply {
         Reply::Result(result) => json!({ "id": id, "result": result }),
-        Reply::Error { code, message } => {
-            json!({ "id": id, "error": { "code": code, "message": message } })
+        Reply::Error {
+            code,
+            message,
+            data,
+        } => {
+            let mut error = json!({ "code": code, "message": message });
+            if let Some(detail) = data {
+                error["data"] = json!(detail);
+            }
+            json!({ "id": id, "error": error })
+        }
+        Reply::Frame(frame) => {
+            let mut frame = frame.clone();
+            frame["id"] = json!(id);
+            frame
         }
         Reply::Silence | Reply::Disconnect => return None,
     };
