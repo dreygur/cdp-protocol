@@ -41,9 +41,11 @@ pub mod keys;
 pub mod methods;
 pub mod network;
 pub mod page;
+pub mod protocol;
 pub mod runtime;
 pub mod screenshot;
 pub mod session;
+pub mod typed;
 pub mod types;
 
 #[cfg(feature = "blocking")]
@@ -56,4 +58,5 @@ pub use client::CdpClient;
 pub use config::Config;
 pub use error::{CdpError, Result};
 pub use session::{CdpSession, SessionEvent};
+pub use typed::{Command, Event};
 pub use types::*;

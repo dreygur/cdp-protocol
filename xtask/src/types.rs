@@ -9,7 +9,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use crate::names::{pascal, snake};
-use crate::schema::{Domain, Field, Items};
+use crate::schema::{Domain, Field, Items, Type};
 
 /// How each CDP primitive is spelled in Rust. `object` carries no declared shape
 /// where it is used as a primitive, and `any` never does, so both become
@@ -61,6 +61,9 @@ pub struct Registry {
     /// Containment edges an array does not break: `a -> b` means a value of `a`
     /// holds a value of `b` inline.
     contains: BTreeMap<Key, Vec<Key>>,
+    /// The types that can derive `Default`, which is every type that does not
+    /// require a string enum somewhere inside it.
+    defaultable: BTreeSet<Key>,
 }
 
 impl Owner<'_> {
@@ -99,16 +102,26 @@ fn reaches(contains: &BTreeMap<Key, Vec<Key>>, from: &Key, target: &Key) -> bool
     false
 }
 
+/// Make an identifier Rust will accept, out of one it might not.
+fn escaped(name: String) -> String {
+    if UNRAWABLE.contains(&name.as_str()) {
+        return format!("{name}_");
+    }
+    if KEYWORDS.contains(&name.as_str()) {
+        return format!("r#{name}");
+    }
+    name
+}
+
 /// The Rust field name for a schema property, escaped if Rust claims the word.
 pub fn field_name(name: &str) -> String {
-    let converted = snake(name);
-    if UNRAWABLE.contains(&converted.as_str()) {
-        return format!("{converted}_");
-    }
-    if KEYWORDS.contains(&converted.as_str()) {
-        return format!("r#{converted}");
-    }
-    converted
+    escaped(snake(name))
+}
+
+/// The Rust variant name for one value of a string enum. The protocol has a
+/// value spelled `Self`, which Rust will not accept even as a raw identifier.
+pub fn variant_name(value: &str) -> String {
+    escaped(pascal(value))
 }
 
 /// The name of the enum generated for a field that lists its values inline
@@ -175,10 +188,75 @@ fn base_type(registry: &Registry, domain: &str, owner: &Owner<'_>, field: &Field
     }
 }
 
+/// Whether one type can derive `Default`, answering for everything it requires
+/// along the way.
+///
+/// A string enum cannot: no value of it is a sensible default, and the protocol
+/// does not nominate one. Anything that requires such an enum inherits the
+/// answer. A cycle cannot bottom out, so it counts as no.
+fn defaultable(
+    index: &BTreeMap<Key, &Type>,
+    known: &mut BTreeMap<Key, bool>,
+    asking: &mut Vec<Key>,
+    key: &Key,
+) -> bool {
+    if let Some(answer) = known.get(key) {
+        return *answer;
+    }
+    if asking.contains(key) {
+        return false;
+    }
+    // A reference that resolves to nothing is caught, with a better message,
+    // when the field that holds it is rendered.
+    let Some(declared) = index.get(key) else {
+        return true;
+    };
+    if declared.values.is_some() {
+        known.insert(key.clone(), false);
+        return false;
+    }
+
+    asking.push(key.clone());
+    let answer = declared.properties.iter().all(|field| {
+        if field.optional {
+            return true;
+        }
+        if field.values.is_some() {
+            return false;
+        }
+        match &field.reference {
+            Some(reference) => defaultable(index, known, asking, &resolve(&key.0, reference)),
+            None => true,
+        }
+    });
+    asking.pop();
+
+    known.insert(key.clone(), answer);
+    answer
+}
+
 impl Registry {
     /// Whether a field holding `key` inline would make `owner` infinitely sized.
     fn is_cyclic(&self, owner: &Key, key: &Key) -> bool {
         reaches(&self.contains, key, owner)
+    }
+
+    /// Whether a struct with these fields can derive `Default`, which is what
+    /// lets a caller name the parameters it cares about and write
+    /// `..Default::default()` for the rest.
+    pub fn is_defaultable(&self, domain: &str, fields: &[Field]) -> bool {
+        fields.iter().all(|field| {
+            if field.optional {
+                return true;
+            }
+            if field.values.is_some() {
+                return false;
+            }
+            match &field.reference {
+                Some(reference) => self.defaultable.contains(&resolve(domain, reference)),
+                None => true,
+            }
+        })
     }
 
     /// The Rust type to write for one field: boxed where a cycle demands it, and
@@ -204,15 +282,18 @@ impl Registry {
     }
 }
 
-/// Index every domain's types, recording what each one contains inline.
+/// Index every domain's types, recording what each one contains inline and
+/// which of them can be defaulted.
 pub fn registry(domains: &[Domain]) -> Registry {
     let mut declared = BTreeSet::new();
     let mut contains: BTreeMap<Key, Vec<Key>> = BTreeMap::new();
+    let mut index: BTreeMap<Key, &Type> = BTreeMap::new();
 
     for domain in domains {
         for declaration in &domain.types {
             let key = (domain.domain.clone(), declaration.id.clone());
             declared.insert(key.clone());
+            index.insert(key.clone(), declaration);
 
             let inline = declaration
                 .properties
@@ -225,5 +306,19 @@ pub fn registry(domains: &[Domain]) -> Registry {
         }
     }
 
-    Registry { declared, contains }
+    let mut known: BTreeMap<Key, bool> = BTreeMap::new();
+    for key in &declared {
+        defaultable(&index, &mut known, &mut Vec::new(), key);
+    }
+    let defaultable = known
+        .into_iter()
+        .filter(|(_, answer)| *answer)
+        .map(|(key, _)| key)
+        .collect();
+
+    Registry {
+        declared,
+        contains,
+        defaultable,
+    }
 }

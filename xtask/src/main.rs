@@ -4,7 +4,7 @@ fn main() {
     let root = xtask::repository_root();
     let generated = xtask::generate(&root);
     println!(
-        "generated {} constants across {} domains",
-        generated.commands, generated.domains
+        "generated {} commands, {} events and {} types across {} domains",
+        generated.commands, generated.events, generated.types, generated.domains
     );
 }
