@@ -1,9 +1,23 @@
 //! `Page`, `Emulation`, and `DOM` mutation commands, added to [`CdpClient`] here.
 
 use serde_json::json;
+use tokio::sync::broadcast;
 
 use crate::client::CdpClient;
-use crate::error::Result;
+use crate::error::{CdpError, Result};
+use crate::types::NavigationResult;
+
+/// Judge a `Page.navigate` result. Chrome answers a navigation it could not
+/// perform with a frame id, a loader id and an `errorText`, so a result that
+/// looks complete still has to be read as a failure.
+fn navigation_outcome(url: &str, navigation: NavigationResult) -> Result<NavigationResult> {
+    match &navigation.error_text {
+        Some(reason) => Err(CdpError::Protocol(format!(
+            "navigation to {url} failed: {reason}"
+        ))),
+        None => Ok(navigation),
+    }
+}
 
 impl CdpClient {
     /// Replace the current document's content with `html`.
@@ -160,5 +174,51 @@ impl CdpClient {
             )
             .await?;
         Ok(result["result"]["value"].clone())
+    }
+
+    /// Navigate to `url`. Returns as soon as navigation starts, without waiting for
+    /// the page to finish loading; use [`navigate_and_wait`](Self::navigate_and_wait)
+    /// to block until `Page.loadEventFired`.
+    ///
+    /// A navigation Chrome refused (an unresolvable host, a refused connection, a
+    /// blocked request) is a [`CdpError::Protocol`] carrying Chrome's `errorText`,
+    /// not a successful result.
+    pub async fn navigate(&self, url: &str) -> Result<NavigationResult> {
+        let result = self
+            .send_command("Page.navigate", json!({ "url": url }))
+            .await?;
+        navigation_outcome(url, serde_json::from_value(result)?)
+    }
+
+    /// Navigate to `url` and wait for `Page.loadEventFired`, up to `timeout_ms`.
+    /// Requires the `"Page"` domain to be enabled.
+    ///
+    /// Fails the same way [`navigate`](Self::navigate) does, before waiting for a
+    /// load event that a refused navigation would never fire.
+    pub async fn navigate_and_wait(&self, url: &str, timeout_ms: u64) -> Result<NavigationResult> {
+        let mut rx = self.subscribe_events();
+        let nav = self.navigate(url).await?;
+        tokio::time::timeout(std::time::Duration::from_millis(timeout_ms), async move {
+            loop {
+                match rx.recv().await {
+                    Ok((m, _)) if m == "Page.loadEventFired" => return Ok(nav),
+                    Ok(_) => continue,
+                    Err(broadcast::error::RecvError::Lagged(_)) => continue,
+                    Err(_) => return Err(CdpError::Protocol("event channel closed".into())),
+                }
+            }
+        })
+        .await
+        .map_err(|_| CdpError::Timeout)?
+    }
+
+    /// Override the viewport size and mobile emulation flag.
+    pub async fn set_viewport(&self, width: i32, height: i32, mobile: bool) -> Result<()> {
+        self.send_command(
+            "Emulation.setDeviceMetricsOverride",
+            json!({ "width": width, "height": height, "deviceScaleFactor": 1, "mobile": mobile }),
+        )
+        .await?;
+        Ok(())
     }
 }

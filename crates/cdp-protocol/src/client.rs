@@ -9,7 +9,6 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 
-use base64::Engine;
 use futures_util::{Sink, Stream};
 use futures_util::{SinkExt, StreamExt};
 use serde::de::DeserializeOwned;
@@ -21,7 +20,6 @@ use tokio_tungstenite::tungstenite::{Error as WsError, Message};
 use tracing::{debug, warn};
 
 use crate::error::{CdpError, Result};
-use crate::types::*;
 
 /// Default per-command timeout, in milliseconds. Override with
 /// [`CdpClient::set_command_timeout`]. A value of `0` disables the timeout.
@@ -43,50 +41,6 @@ const UNDESCRIBED_ERROR: &str = "protocol error";
 type PendingMap = Arc<Mutex<HashMap<u64, oneshot::Sender<Result<Value>>>>>;
 
 type Events = broadcast::Sender<(String, Value)>;
-
-/// Decode the base64 payload a screenshot command answers with.
-fn png_bytes_from(result: &Value) -> Result<Vec<u8>> {
-    let data = result["data"]
-        .as_str()
-        .ok_or_else(|| CdpError::Protocol("screenshot response has no data".into()))?;
-    base64::engine::general_purpose::STANDARD
-        .decode(data)
-        .map_err(|e| CdpError::Protocol(e.to_string()))
-}
-
-/// Judge a `Page.navigate` result. Chrome answers a navigation it could not
-/// perform with a frame id, a loader id and an `errorText`, so a result that
-/// looks complete still has to be read as a failure.
-fn navigation_outcome(url: &str, navigation: NavigationResult) -> Result<NavigationResult> {
-    match &navigation.error_text {
-        Some(reason) => Err(CdpError::Protocol(format!(
-            "navigation to {url} failed: {reason}"
-        ))),
-        None => Ok(navigation),
-    }
-}
-
-/// What to say about an expression that threw, given Chrome's `exceptionDetails`.
-///
-/// A thrown `Error` arrives as an object whose `description` is its message
-/// followed by a stack trace, so only the first line is kept. Anything else JS
-/// can throw (a string, a number) arrives as a plain `value` instead, and if
-/// Chrome sends neither, its own summary `text` is all there is.
-fn thrown_message(details: &Value) -> String {
-    let exception = &details["exception"];
-    if let Some(description) = exception["description"].as_str() {
-        return description
-            .lines()
-            .next()
-            .unwrap_or(description)
-            .to_string();
-    }
-    match &exception["value"] {
-        Value::Null => details["text"].as_str().unwrap_or("uncaught").to_string(),
-        Value::String(thrown) => thrown.clone(),
-        thrown => thrown.to_string(),
-    }
-}
 
 /// Read the error object Chrome answers a rejected command with. Only `message`
 /// is reliably present, so a frame carrying less still has to yield an error a
@@ -354,231 +308,10 @@ impl CdpClient {
         Ok(())
     }
 
-    /// Navigate to `url`. Returns as soon as navigation starts, without waiting for
-    /// the page to finish loading; use [`navigate_and_wait`](Self::navigate_and_wait)
-    /// to block until `Page.loadEventFired`.
-    ///
-    /// A navigation Chrome refused (an unresolvable host, a refused connection, a
-    /// blocked request) is a [`CdpError::Protocol`] carrying Chrome's `errorText`,
-    /// not a successful result.
-    pub async fn navigate(&self, url: &str) -> Result<NavigationResult> {
-        let result = self
-            .send_command("Page.navigate", json!({ "url": url }))
-            .await?;
-        navigation_outcome(url, serde_json::from_value(result)?)
-    }
-
-    /// Navigate to `url` and wait for `Page.loadEventFired`, up to `timeout_ms`.
-    /// Requires the `"Page"` domain to be enabled.
-    ///
-    /// Fails the same way [`navigate`](Self::navigate) does, before waiting for a
-    /// load event that a refused navigation would never fire.
-    pub async fn navigate_and_wait(&self, url: &str, timeout_ms: u64) -> Result<NavigationResult> {
-        let mut rx = self.events_tx.subscribe();
-        let nav = self.navigate(url).await?;
-        tokio::time::timeout(std::time::Duration::from_millis(timeout_ms), async move {
-            loop {
-                match rx.recv().await {
-                    Ok((m, _)) if m == "Page.loadEventFired" => return Ok(nav),
-                    Ok(_) => continue,
-                    Err(broadcast::error::RecvError::Lagged(_)) => continue,
-                    Err(_) => return Err(CdpError::Protocol("event channel closed".into())),
-                }
-            }
-        })
-        .await
-        .map_err(|_| CdpError::Timeout)?
-    }
-
-    /// Evaluate a JS expression and return its result stringified.
-    ///
-    /// An expression that throws is a [`CdpError::Protocol`] carrying the thrown
-    /// message, since a returned string cannot tell an empty result apart from a
-    /// failure. Use [`evaluate`](Self::evaluate) when you want the structured
-    /// result, or an exception as data rather than as an error.
-    pub async fn eval(&self, expression: &str) -> Result<String> {
-        let outcome = self.evaluate(expression).await?;
-        if let Some(details) = &outcome.exception_details {
-            return Err(CdpError::Protocol(format!(
-                "evaluation threw: {}",
-                thrown_message(details)
-            )));
-        }
-        Ok(outcome
-            .result
-            .value
-            .map(|v| match v {
-                Value::String(s) => s,
-                other => other.to_string(),
-            })
-            .unwrap_or_default())
-    }
-
-    /// Evaluate a JS expression via `Runtime.evaluate` and return the full result,
-    /// including any exception details.
-    pub async fn evaluate(&self, expression: &str) -> Result<EvaluateResult> {
-        let result = self
-            .send_command(
-                "Runtime.evaluate",
-                json!({ "expression": expression, "returnByValue": true }),
-            )
-            .await?;
-        Ok(serde_json::from_value(result)?)
-    }
-
-    /// Fetch the document's root node. Requires the `"DOM"` domain to be enabled.
-    pub async fn get_document(&self) -> Result<DocumentNode> {
-        let result = self
-            .send_command("DOM.getDocument", json!({ "depth": 0 }))
-            .await?;
-        let root = result["root"].clone();
-        if root.is_null() {
-            return Err(CdpError::Protocol(
-                "DOM.getDocument returned no root".into(),
-            ));
-        }
-        Ok(serde_json::from_value(root)?)
-    }
-
-    /// Returns the matched `nodeId`, or `None` when nothing matches.
-    /// CDP reports a missing match as `nodeId` 0; this surfaces that as `None`
-    /// rather than a node id that looks valid.
-    pub async fn query_selector(&self, node_id: i64, selector: &str) -> Result<Option<i64>> {
-        let result = self
-            .send_command(
-                "DOM.querySelector",
-                json!({ "nodeId": node_id, "selector": selector }),
-            )
-            .await?;
-        Ok(match result["nodeId"].as_i64() {
-            Some(id) if id > 0 => Some(id),
-            _ => None,
-        })
-    }
-
-    /// Serialize a node's outer HTML.
-    pub async fn get_outer_html(&self, node_id: i64) -> Result<String> {
-        let result = self
-            .send_command("DOM.getOuterHTML", json!({ "nodeId": node_id }))
-            .await?;
-        Ok(result["outerHTML"].as_str().unwrap_or("").to_string())
-    }
-
     /// Close the tab this client is attached to.
     pub async fn close(&self) -> Result<()> {
         // Ignore errors, connection drops immediately after the tab closes
         let _ = self.send_command("Page.close", json!({})).await;
         Ok(())
-    }
-
-    /// Capture a PNG screenshot of the current viewport.
-    pub async fn screenshot(&self) -> Result<Vec<u8>> {
-        let result = self
-            .send_command(
-                "Page.captureScreenshot",
-                json!({ "format": "png", "fromSurface": true }),
-            )
-            .await?;
-        png_bytes_from(&result)
-    }
-
-    /// [`screenshot`](Self::screenshot), written directly to `path`.
-    pub async fn screenshot_to_file(&self, path: &str) -> Result<()> {
-        tokio::fs::write(path, self.screenshot().await?).await?;
-        Ok(())
-    }
-
-    /// Capture a PNG screenshot of the full page, resizing the viewport to the
-    /// page's scroll size first (restoring it is the caller's responsibility).
-    pub async fn full_page_screenshot(&self) -> Result<Vec<u8>> {
-        let size = self
-            .evaluate(
-                "(() => ({ \
-                w: Math.max(document.body.scrollWidth, document.documentElement.scrollWidth), \
-                h: Math.max(document.body.scrollHeight, document.documentElement.scrollHeight) \
-            }))()",
-            )
-            .await?;
-
-        let dims = size.result.value.as_ref();
-        let w = dims.and_then(|v| v["w"].as_i64()).unwrap_or(1920) as i32;
-        let h = dims.and_then(|v| v["h"].as_i64()).unwrap_or(1200) as i32;
-        self.set_viewport(w.max(1920), h.max(1200), false).await?;
-
-        let result = self
-            .send_command(
-                "Page.captureScreenshot",
-                json!({
-                    "format": "png",
-                    "captureBeyondViewport": true,
-                    "fromSurface": true,
-                }),
-            )
-            .await?;
-        png_bytes_from(&result)
-    }
-
-    /// [`full_page_screenshot`](Self::full_page_screenshot), written directly to `path`.
-    pub async fn full_page_screenshot_to_file(&self, path: &str) -> Result<()> {
-        tokio::fs::write(path, self.full_page_screenshot().await?).await?;
-        Ok(())
-    }
-
-    /// Override the viewport size and mobile emulation flag.
-    pub async fn set_viewport(&self, width: i32, height: i32, mobile: bool) -> Result<()> {
-        self.send_command(
-            "Emulation.setDeviceMetricsOverride",
-            json!({ "width": width, "height": height, "deviceScaleFactor": 1, "mobile": mobile }),
-        )
-        .await?;
-        Ok(())
-    }
-
-    /// List cookies visible to the current page.
-    pub async fn get_cookies(&self) -> Result<Vec<Cookie>> {
-        let result = self.send_command("Network.getCookies", json!({})).await?;
-        Ok(serde_json::from_value(result["cookies"].clone())?)
-    }
-
-    /// `GET /json/version` on Chrome's debugging HTTP endpoint.
-    pub async fn get_version(host: &str, port: u16) -> Result<BrowserVersion> {
-        let url = format!("http://{host}:{port}/json/version");
-        Ok(reqwest::get(&url).await?.json().await?)
-    }
-
-    /// `GET /json/list`: enumerate debuggable targets (tabs, workers, ...).
-    pub async fn list_targets(host: &str, port: u16) -> Result<Vec<Target>> {
-        let url = format!("http://{host}:{port}/json/list");
-        Ok(reqwest::get(&url).await?.json().await?)
-    }
-
-    /// Connect to the first target of type `"page"` reported by [`list_targets`](Self::list_targets).
-    /// Returns [`CdpError::NoTarget`] if none exists.
-    pub async fn connect_to_page(host: &str, port: u16) -> Result<Self> {
-        let targets = Self::list_targets(host, port).await?;
-        let page = targets
-            .into_iter()
-            .find(|t| t.target_type == "page")
-            .ok_or(CdpError::NoTarget)?;
-        let ws_url = page
-            .web_socket_debugger_url
-            .ok_or_else(|| CdpError::InvalidUrl("target has no debugger URL".into()))?;
-        Self::connect(&ws_url).await
-    }
-
-    /// Open a new tab, optionally navigating it to `url` immediately. Uses `PUT
-    /// /json/new` since modern Chrome rejects `GET` for this endpoint.
-    pub async fn create_tab(host: &str, port: u16, url: Option<&str>) -> Result<Target> {
-        // Chrome requires PUT for /json/new (GET returns 405 in modern versions)
-        let endpoint = match url {
-            Some(u) => format!("http://{host}:{port}/json/new?{u}"),
-            None => format!("http://{host}:{port}/json/new"),
-        };
-        Ok(reqwest::Client::new()
-            .put(&endpoint)
-            .send()
-            .await?
-            .json()
-            .await?)
     }
 }

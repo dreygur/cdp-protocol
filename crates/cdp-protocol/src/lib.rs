@@ -34,11 +34,15 @@ pub mod agent;
 pub mod client;
 pub mod cluster;
 pub mod config;
+pub mod discovery;
+pub mod dom;
 pub mod error;
 pub mod keys;
 pub mod methods;
 pub mod network;
 pub mod page;
+pub mod runtime;
+pub mod screenshot;
 pub mod types;
 
 #[cfg(feature = "blocking")]

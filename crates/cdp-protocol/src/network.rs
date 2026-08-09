@@ -7,6 +7,7 @@ use serde_json::json;
 
 use crate::client::CdpClient;
 use crate::error::Result;
+use crate::types::Cookie;
 
 impl CdpClient {
     /// Set a cookie. `url` or `domain` is required by CDP to resolve which
@@ -123,5 +124,11 @@ impl CdpClient {
         )
         .await?;
         Ok(())
+    }
+
+    /// List cookies visible to the current page.
+    pub async fn get_cookies(&self) -> Result<Vec<Cookie>> {
+        let result = self.send_command("Network.getCookies", json!({})).await?;
+        Ok(serde_json::from_value(result["cookies"].clone())?)
     }
 }
