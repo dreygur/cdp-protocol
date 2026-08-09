@@ -6,6 +6,10 @@
 //! `{"id","method","params"}` going out and `{"id","result"}` or `{"id","error"}`
 //! coming back.
 
+// Every test binary including this module uses only the part of the endpoint its
+// own tests need, so items no single binary reaches are expected here.
+#![allow(dead_code)]
+
 use std::sync::Arc;
 
 use futures_util::{SinkExt, StreamExt};
@@ -32,6 +36,9 @@ pub struct Command {
     pub id: u64,
     pub method: String,
     pub params: Value,
+    /// The session the command was addressed to, absent when it was addressed to
+    /// the target the client connected to.
+    pub session_id: Option<String>,
 }
 
 /// What the server should do about a [`Command`].
@@ -48,6 +55,11 @@ pub enum Reply {
     /// Answer with `{"id"}` merged into a frame the test builds itself, for shapes
     /// the other variants cannot express (an error frame missing its code, say).
     Frame(Value),
+    /// Answer with `{"id", "result"}` and then push frames the client never asked
+    /// for, as Chrome does when a command's side effect raises events. Each frame
+    /// is sent verbatim, so a test decides for itself whether one is tagged with a
+    /// `sessionId`.
+    ResultThenEvents { result: Value, events: Vec<Value> },
     /// Answer with nothing at all, leaving the client to time out.
     Silence,
     /// Drop the socket without answering, as a browser that exits mid-command does.
@@ -78,14 +90,31 @@ fn parse_command(text: &str) -> Option<Command> {
         id: value.get("id")?.as_u64()?,
         method: value.get("method")?.as_str()?.to_string(),
         params: value.get("params").cloned().unwrap_or(Value::Null),
+        session_id: value
+            .get("sessionId")
+            .and_then(Value::as_str)
+            .map(str::to_string),
     })
 }
 
-/// Render a reply into the frame Chrome would send. `None` means send nothing,
-/// which covers both staying silent and hanging up.
-fn render_reply(id: u64, reply: &Reply) -> Option<String> {
-    let envelope = match reply {
-        Reply::Result(result) => json!({ "id": id, "result": result }),
+/// Address a reply back to the command it answers. Chrome echoes the `sessionId`
+/// of a command addressed to a session, so the mock does too: a client that keyed
+/// its pending replies by session rather than by id alone would pass tests the
+/// browser would fail it on otherwise.
+fn answering(command: &Command, body: Value) -> Value {
+    let mut frame = body;
+    frame["id"] = json!(command.id);
+    if let Some(session_id) = &command.session_id {
+        frame["sessionId"] = json!(session_id);
+    }
+    frame
+}
+
+/// Render a reply into the frames Chrome would send, in order. An empty list
+/// means send nothing, which covers both staying silent and hanging up.
+fn render_frames(command: &Command, reply: &Reply) -> Vec<String> {
+    let (body, events) = match reply {
+        Reply::Result(result) => (json!({ "result": result }), Vec::new()),
         Reply::Error {
             code,
             message,
@@ -95,16 +124,16 @@ fn render_reply(id: u64, reply: &Reply) -> Option<String> {
             if let Some(detail) = data {
                 error["data"] = json!(detail);
             }
-            json!({ "id": id, "error": error })
+            (json!({ "error": error }), Vec::new())
         }
-        Reply::Frame(frame) => {
-            let mut frame = frame.clone();
-            frame["id"] = json!(id);
-            frame
-        }
-        Reply::Silence | Reply::Disconnect => return None,
+        Reply::Frame(frame) => (frame.clone(), Vec::new()),
+        Reply::ResultThenEvents { result, events } => (json!({ "result": result }), events.clone()),
+        Reply::Silence | Reply::Disconnect => return Vec::new(),
     };
-    Some(envelope.to_string())
+
+    let mut frames = vec![answering(command, body).to_string()];
+    frames.extend(events.iter().map(Value::to_string));
+    frames
 }
 
 /// Serve a single accepted socket until the client goes away.
@@ -125,7 +154,7 @@ async fn serve_connection(stream: tokio::net::TcpStream, respond: Responder) {
         if matches!(reply, Reply::Disconnect) {
             return;
         }
-        if let Some(frame) = render_reply(command.id, &reply) {
+        for frame in render_frames(&command, &reply) {
             if sink.send(Message::Text(frame.into())).await.is_err() {
                 return;
             }
