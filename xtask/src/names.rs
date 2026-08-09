@@ -2,7 +2,12 @@
 //!
 //! The protocol is camelCase with acronym runs left intact, so `getDOMCounters`
 //! and `printToPDF` both need splitting in a way that a per-capital scan gets
-//! wrong.
+//! wrong. Enum values are not camelCase at all: they arrive as `font-face` and
+//! `auto_bookmark`, so punctuation breaks a word too.
+
+/// Characters the protocol uses between words in an enum value. None of them can
+/// appear in a Rust identifier, so each one has to end the word it follows.
+const SEPARATORS: [char; 4] = ['-', '_', '.', ' '];
 
 /// Split a CDP identifier into lowercase words, keeping acronym runs whole.
 ///
@@ -13,6 +18,13 @@ pub fn words(name: &str) -> Vec<String> {
     let mut current = String::new();
 
     for (i, &ch) in chars.iter().enumerate() {
+        if SEPARATORS.contains(&ch) {
+            if !current.is_empty() {
+                out.push(std::mem::take(&mut current));
+            }
+            continue;
+        }
+
         // A capital after a lowercase always opens a word. A capital inside an
         // acronym opens one only when a lowercase follows, so that the run in
         // `DOMCounters` breaks as `DOM` + `Counters`.
@@ -38,7 +50,25 @@ pub fn screaming_snake(name: &str) -> String {
     words(name).join("_").to_uppercase()
 }
 
-/// `DOMSnapshot` -> `dom_snapshot`, for module names.
+/// `DOMSnapshot` -> `dom_snapshot`, for module names and field names.
 pub fn snake(name: &str) -> String {
     words(name).join("_")
+}
+
+/// `getDOMCounters` -> `GetDomCounters`, for type and variant names.
+///
+/// Acronyms lose their run of capitals on purpose: `GetDOMCounters` reads as
+/// three words to a human but not to Rust's own casing lint, and a consistent
+/// rule is what keeps generated names predictable.
+pub fn pascal(name: &str) -> String {
+    words(name)
+        .iter()
+        .map(|word| {
+            let mut chars = word.chars();
+            match chars.next() {
+                Some(first) => first.to_ascii_uppercase().to_string() + chars.as_str(),
+                None => String::new(),
+            }
+        })
+        .collect()
 }

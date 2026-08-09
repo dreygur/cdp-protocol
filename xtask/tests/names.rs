@@ -3,7 +3,7 @@
 //! Acronym runs are the whole difficulty: a per-capital split turns
 //! `getDOMCounters` into `GET_D_O_M_COUNTERS`, which is why these exist.
 
-use xtask::names::{screaming_snake, snake, words};
+use xtask::names::{pascal, screaming_snake, snake, words};
 
 #[test]
 fn a_plain_camel_case_name_splits_on_each_capital() {
@@ -54,4 +54,33 @@ fn a_digit_opens_the_next_word() {
 fn an_empty_name_yields_no_words() {
     assert!(words("").is_empty());
     assert_eq!(snake(""), "");
+}
+
+#[test]
+fn a_type_name_keeps_its_shape_in_pascal_case() {
+    assert_eq!(pascal("createTarget"), "CreateTarget");
+    assert_eq!(pascal("Node"), "Node");
+    assert_eq!(pascal("getOuterHTML"), "GetOuterHtml");
+}
+
+#[test]
+fn punctuation_in_an_enum_value_breaks_a_word() {
+    assert_eq!(words("font-face"), ["font", "face"]);
+    assert_eq!(pascal("font-face"), "FontFace");
+    assert_eq!(pascal("auto_bookmark"), "AutoBookmark");
+    assert_eq!(pascal("ch-ua-full-version-list"), "ChUaFullVersionList");
+}
+
+#[test]
+fn enum_values_that_differ_only_in_a_digit_stay_distinct() {
+    assert_eq!(pascal("ctap2_0"), "Ctap20");
+    assert_eq!(pascal("ctap2_1"), "Ctap21");
+}
+
+#[test]
+fn a_mixed_case_enum_value_keeps_its_word_boundaries() {
+    assert_eq!(
+        pascal("RenderFrameHostReused_CrossSite"),
+        "RenderFrameHostReusedCrossSite"
+    );
 }
