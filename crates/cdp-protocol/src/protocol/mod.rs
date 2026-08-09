@@ -26,11 +26,8 @@
 //! # }
 //! ```
 
-// The protocol names its own variants; renaming them to please a lint would
-// cost more than it buys.
-#![allow(clippy::enum_variant_names)]
-// Schema prose is reflowed from JSON, so an indented continuation line is not
-// the list item rustdoc suspects it of being.
+// Schema prose is reflowed to fit a doc comment, so a line that happens to
+// begin with a dash is not the list item this lint takes it for.
 #![allow(clippy::doc_lazy_continuation)]
 
 pub mod accessibility;

@@ -40,11 +40,8 @@ Unrecognized(String),";
 /// Lint exemptions the generated tree needs as a whole. Lint levels follow the
 /// module tree, so setting them on the parent covers every domain module.
 const MODULE_ALLOWS: &str = "\
-// The protocol names its own variants; renaming them to please a lint would\n\
-// cost more than it buys.\n\
-#![allow(clippy::enum_variant_names)]\n\
-// Schema prose is reflowed from JSON, so an indented continuation line is not\n\
-// the list item rustdoc suspects it of being.\n\
+// Schema prose is reflowed to fit a doc comment, so a line that happens to\n\
+// begin with a dash is not the list item this lint takes it for.\n\
 #![allow(clippy::doc_lazy_continuation)]\n\
 ";
 
