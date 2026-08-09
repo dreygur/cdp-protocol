@@ -2,6 +2,10 @@
 
 Chrome DevTools Protocol (CDP) client in Rust. WebSocket-based browser automation for AI agents, web scraping, and testing.
 
+Covers the whole protocol: all 664 commands, 233 events and 608 types are
+generated from the published schema, alongside a small hand-written API for the
+things you reach for constantly.
+
 ## Quick Start
 
 Start Chrome with remote debugging:
@@ -124,6 +128,94 @@ async fn main() -> cdp_driver::Result<()> {
     Ok(())
 }
 ```
+
+### Typed commands and events
+
+Every command is a struct that knows its own method name and result type, so the
+three cannot disagree. Generated from the protocol schema into
+`cdp_driver::protocol`, one module per domain.
+
+```rust
+use cdp_driver::protocol::page::{EnableParams, LoadEventFiredEvent, NavigateParams};
+use cdp_driver::protocol::runtime::EvaluateParams;
+
+client.send(EnableParams::default()).await?;
+
+let navigated = client.send(NavigateParams {
+    url: "https://example.com".to_string(),
+    ..Default::default()
+}).await?;
+assert!(navigated.error_text.is_none());
+
+let loaded = client.wait_for::<LoadEventFiredEvent>(10_000).await?;
+println!("loaded at {}", loaded.timestamp);
+
+let evaluated = client.send(EvaluateParams {
+    expression: "document.title".to_string(),
+    return_by_value: Some(true),
+    ..Default::default()
+}).await?;
+```
+
+Schema enums keep an `Unrecognized(String)` variant, because Chrome ships values
+ahead of the published protocol and a payload should not fail to decode just
+because it is newer than this crate.
+
+### Any command by name
+
+`call` and `call_raw` send anything, for exploring a response or reaching a
+command with no typed struct to hand. `cdp_driver::methods` holds a constant per
+command so a typo is a compile error rather than a runtime one.
+
+```rust
+use cdp_driver::methods::target;
+use cdp_driver::protocol::target::CreateTargetReturns;
+use serde_json::json;
+
+// deserialized into a type you name
+let created: CreateTargetReturns = client
+    .call(target::CREATE_TARGET, json!({ "url": "about:blank" }))
+    .await?;
+
+// or raw, to index into while you are still learning a response
+let targets = client.call_raw(target::GET_TARGETS, json!({})).await?;
+```
+
+### Sessions
+
+Attaching reaches a target other than the one you connected to (another tab, an
+out-of-process iframe, a worker) over the same socket, using CDP's flat session
+mode.
+
+```rust
+let session = client.attach_to_target(&target_id).await?;
+
+session.send(EnableParams::default()).await?;
+session.send(NavigateParams {
+    url: "https://example.com".to_string(),
+    ..Default::default()
+}).await?;
+
+session.detach().await?;
+```
+
+`subscribe_session_events()` yields `SessionEvent { session_id, method, params }`,
+where `session_id` is `None` for the target you connected to directly. The older
+`subscribe_events()` keeps its exact meaning and only ever sees those untagged
+events, so an attached tab's activity cannot wake a waiter watching another tab.
+
+### Errors
+
+`CdpError::Browser { code, message, data }` is what Chrome rejected, carrying
+CDP's own numeric code (`-32601` for an unknown method, `-32602` for bad
+parameters). Branch on `code` rather than on the wording of `message`.
+`CdpError::Protocol(String)` is reserved for what this crate itself could not
+make sense of.
+
+Two calls report failure rather than hiding it: `navigate` fails when Chrome
+answers with an `errorText` such as `net::ERR_NAME_NOT_RESOLVED`, and `eval`
+fails when the expression throws. Use `evaluate` when you want an exception back
+as data instead of as an error.
 
 ### Events
 
@@ -301,25 +393,42 @@ are exposed to JS. `CdpClient` mirrors the Rust client/network/page surface;
 
 ```
 src/
-├── lib.rs          # public exports
-├── client.rs       # CDP WebSocket client, event system
-├── agent.rs        # high-level agent, BrowserAction enum, ActionBuilder
-├── cluster.rs      # worker pool (Cluster, ClusterConfig)
-├── blocking.rs     # synchronous wrappers (feature = "blocking")
-├── network.rs      # network methods (cookies, headers, interception)
-├── page.rs         # page/emulation/DOM methods (PDF, user agent, geolocation)
-├── config.rs       # Config struct
-├── types.rs        # protocol types
-└── error.rs        # CdpError
+├── lib.rs            # public exports
+├── client.rs         # the session: socket, command channel, frame routing, events
+├── session.rs        # CdpSession, attaching to other targets
+├── typed.rs          # Command and Event traits, send/wait_for/decode
+├── protocol/         # generated: 664 commands, 233 events, 608 types
+├── methods/          # generated: a name constant per command
+├── discovery.rs      # Chrome's HTTP /json endpoints
+├── page.rs           # navigation, emulation, PDF, geolocation
+├── network.rs        # cookies, headers, interception
+├── dom.rs            # document tree
+├── runtime.rs        # JavaScript evaluation
+├── screenshot.rs     # PNG capture
+├── agent.rs          # BrowserAgent: runs actions, reports outcomes
+├── action.rs         # BrowserAction, the action vocabulary
+├── action_parse.rs   # BrowserAction from LLM tool-call JSON
+├── action_builder.rs # ActionBuilder
+├── keys.rs           # keyboard names for Input.dispatchKeyEvent
+├── cluster.rs        # worker pool (Cluster, ClusterConfig)
+├── blocking.rs       # synchronous wrappers (feature = "blocking")
+├── config.rs         # Config struct
+├── types.rs          # hand-written types for the curated API
+└── error.rs          # CdpError
 
 examples/
 ├── basic.rs        # low-level usage
 ├── agent.rs        # agent + JSON dispatch + builder
 ├── industrial.rs   # parallel scraping with JoinSet
 ├── cluster.rs      # worker pool with retries
+├── raw.rs          # call/call_raw into domains with no wrapper
 └── common/
     └── logging.rs  # shared tracing init
 ```
+
+Generated code comes from the schemas vendored in `protocol/` at the repository
+root. `just generate-methods` regenerates it; `just update-protocol` refreshes
+the schemas from upstream first.
 
 ## Resources
 
