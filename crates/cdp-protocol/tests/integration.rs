@@ -316,3 +316,62 @@ async fn a_session_drives_a_second_tab_and_leaves_the_connected_one_alone() {
         .await
         .expect("the connection must outlive the session it carried");
 }
+
+/// A page whose title a typed `Runtime.evaluate` can read back.
+const TYPED_TAB: &str = "data:text/html,<title>typed</title><h1>typed</h1>";
+
+#[tokio::test]
+#[ignore = "requires a running Chrome on the debugging port"]
+async fn a_typed_command_and_a_typed_event_reach_a_real_browser() {
+    // The generated types are checked against fixtures elsewhere. What only a
+    // browser can say is whether Chrome accepts the parameters they serialize
+    // to, and whether the payload it raises fits the struct they decode into.
+    use cdp_driver::protocol::page::{
+        EnableParams, LoadEventFiredEvent, NavigateParams, NavigateReturns,
+    };
+    use cdp_driver::protocol::runtime::{EvaluateParams, EvaluateReturns};
+
+    let client = CdpClient::connect_to_page(&host(), port())
+        .await
+        .expect("connect to page target");
+    client
+        .send(EnableParams::default())
+        .await
+        .expect("Page.enable");
+
+    let (loaded, navigated) = tokio::join!(
+        client.wait_for::<LoadEventFiredEvent>(10_000),
+        client.send(NavigateParams {
+            url: TYPED_TAB.to_string(),
+            ..Default::default()
+        }),
+    );
+
+    let navigated: NavigateReturns = navigated.expect("Page.navigate");
+    assert!(
+        navigated.error_text.is_none(),
+        "the navigation failed: {:?}",
+        navigated.error_text
+    );
+    assert!(
+        !navigated.frame_id.is_empty(),
+        "Chrome always names the frame it navigated"
+    );
+    let loaded: LoadEventFiredEvent = loaded.expect("Page.loadEventFired");
+    assert!(loaded.timestamp > 0.0, "the load event carries a timestamp");
+
+    let evaluated: EvaluateReturns = client
+        .send(EvaluateParams {
+            expression: "document.title".to_string(),
+            return_by_value: Some(true),
+            ..Default::default()
+        })
+        .await
+        .expect("Runtime.evaluate");
+
+    assert!(
+        evaluated.exception_details.is_none(),
+        "the expression threw"
+    );
+    assert_eq!(evaluated.result.value, Some(serde_json::json!("typed")));
+}
