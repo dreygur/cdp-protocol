@@ -20,6 +20,7 @@ use tokio_tungstenite::tungstenite::{Error as WsError, Message};
 use tracing::{debug, warn};
 
 use crate::error::{CdpError, Result};
+use crate::session::SessionEvent;
 
 /// Default per-command timeout, in milliseconds. Override with
 /// [`CdpClient::set_command_timeout`]. A value of `0` disables the timeout.
@@ -41,6 +42,19 @@ const UNDESCRIBED_ERROR: &str = "protocol error";
 type PendingMap = Arc<Mutex<HashMap<u64, oneshot::Sender<Result<Value>>>>>;
 
 type Events = broadcast::Sender<(String, Value)>;
+
+type SessionEvents = broadcast::Sender<SessionEvent>;
+
+/// Build the frame one command goes out as. A command addressed to an attached
+/// session carries its `sessionId` beside `id`, never inside `params`; a command
+/// for the target this client connected to carries no `sessionId` at all.
+fn outgoing(id: u64, session_id: Option<&str>, method: &str, params: Value) -> Value {
+    let mut frame = json!({ "id": id, "method": method, "params": params });
+    if let Some(session_id) = session_id {
+        frame["sessionId"] = json!(session_id);
+    }
+    frame
+}
 
 /// Read the error object Chrome answers a rejected command with. Only `message`
 /// is reliably present, so a frame carrying less still has to yield an error a
@@ -80,24 +94,41 @@ async fn deliver(pending: &PendingMap, id: u64, reply: Result<Value>) {
 }
 
 /// Publish an unsolicited frame to event subscribers.
-fn publish(events: &Events, frame: &Value) {
+///
+/// Session-aware subscribers see every event with the session it came from.
+/// [`CdpClient::subscribe_events`] sees only the events of the target this client
+/// connected to: it has no way to report a session, and a waiter there watching
+/// for `Page.loadEventFired` must not be woken by some attached tab's load.
+fn publish(events: &Events, session_events: &SessionEvents, frame: &Value) {
     let Some(method) = frame.get("method").and_then(Value::as_str) else {
         return;
     };
+    let session_id = frame.get("sessionId").and_then(Value::as_str);
     debug!(%method, "event");
     let params = frame.get("params").cloned().unwrap_or(Value::Null);
-    let _ = events.send((method.to_owned(), params));
+
+    let _ = session_events.send(SessionEvent {
+        session_id: session_id.map(str::to_owned),
+        method: method.to_owned(),
+        params: params.clone(),
+    });
+    if session_id.is_none() {
+        let _ = events.send((method.to_owned(), params));
+    }
 }
 
 /// Route one text frame. A frame carrying an `id` answers a command; anything
 /// else is an event. Frames that are not JSON at all are dropped.
-async fn route(text: &str, pending: &PendingMap, events: &Events) {
+///
+/// Ids are unique across the whole connection, sessions included, so a reply is
+/// matched by id alone and the `sessionId` it echoes needs no attention here.
+async fn route(text: &str, pending: &PendingMap, events: &Events, session_events: &SessionEvents) {
     let Ok(frame) = serde_json::from_str::<Value>(text) else {
         return;
     };
     match frame.get("id").and_then(Value::as_u64) {
         Some(id) => deliver(pending, id, reply_in(&frame, id)).await,
-        None => publish(events, &frame),
+        None => publish(events, session_events, &frame),
     }
 }
 
@@ -126,13 +157,17 @@ where
 ///
 /// However the stream ends, whether closed cleanly, failed, or simply exhausted,
 /// the commands still in flight are failed rather than left to time out.
-async fn read_incoming<S>(mut stream: S, pending: PendingMap, events: Events)
-where
+async fn read_incoming<S>(
+    mut stream: S,
+    pending: PendingMap,
+    events: Events,
+    session_events: SessionEvents,
+) where
     S: Stream<Item = std::result::Result<Message, WsError>> + Unpin,
 {
     while let Some(message) = stream.next().await {
         match message {
-            Ok(Message::Text(text)) => route(&text, &pending, &events).await,
+            Ok(Message::Text(text)) => route(&text, &pending, &events, &session_events).await,
             Ok(Message::Close(_)) | Err(_) => break,
             _ => {}
         }
@@ -150,6 +185,7 @@ pub struct CdpClient {
     pending: PendingMap,
     next_id: Arc<AtomicU64>,
     events_tx: broadcast::Sender<(String, Value)>,
+    session_events_tx: SessionEvents,
     command_timeout_ms: Arc<AtomicU64>,
 }
 
@@ -165,16 +201,23 @@ impl CdpClient {
 
         let pending: PendingMap = Arc::new(Mutex::new(HashMap::new()));
         let (events_tx, _) = broadcast::channel::<(String, Value)>(EVENT_BACKLOG);
+        let (session_events_tx, _) = broadcast::channel::<SessionEvent>(EVENT_BACKLOG);
         let (tx, outgoing) = mpsc::unbounded_channel::<Message>();
 
         tokio::spawn(write_outgoing(sink, outgoing));
-        tokio::spawn(read_incoming(stream, pending.clone(), events_tx.clone()));
+        tokio::spawn(read_incoming(
+            stream,
+            pending.clone(),
+            events_tx.clone(),
+            session_events_tx.clone(),
+        ));
 
         Ok(CdpClient {
             tx,
             pending,
             next_id: Arc::new(AtomicU64::new(1)),
             events_tx,
+            session_events_tx,
             command_timeout_ms: Arc::new(AtomicU64::new(DEFAULT_COMMAND_TIMEOUT_MS)),
         })
     }
@@ -191,7 +234,14 @@ impl CdpClient {
         Duration::from_millis(self.command_timeout_ms.load(Ordering::Relaxed))
     }
 
-    pub(crate) async fn send_command(&self, method: &str, params: Value) -> Result<Value> {
+    /// Send one command, optionally addressed to an attached session, and wait for
+    /// the reply the browser matches to it by id.
+    pub(crate) async fn send_command_on(
+        &self,
+        session_id: Option<&str>,
+        method: &str,
+        params: Value,
+    ) -> Result<Value> {
         let id = self.next_id.fetch_add(1, Ordering::SeqCst);
         debug!(%method, id, "send");
         let (tx, rx) = oneshot::channel();
@@ -199,9 +249,7 @@ impl CdpClient {
         self.pending.lock().await.insert(id, tx);
 
         if let Err(e) = self.tx.send(Message::Text(
-            json!({ "id": id, "method": method, "params": params })
-                .to_string()
-                .into(),
+            outgoing(id, session_id, method, params).to_string().into(),
         )) {
             // Writer task is gone; don't leave a dangling entry in `pending`.
             self.pending.lock().await.remove(&id);
@@ -228,6 +276,10 @@ impl CdpClient {
                 Err(CdpError::Timeout)
             }
         }
+    }
+
+    pub(crate) async fn send_command(&self, method: &str, params: Value) -> Result<Value> {
+        self.send_command_on(None, method, params).await
     }
 
     /// Send any CDP command and deserialize its result into `R`.
@@ -279,8 +331,21 @@ impl CdpClient {
     /// Only events for domains enabled via [`enable_domain`](Self::enable_domain)
     /// are emitted. Lagging receivers silently drop the oldest events rather than
     /// blocking the connection.
+    ///
+    /// These are the events of the target this client connected to. Events raised
+    /// by an attached session ([`attach_to_target`](Self::attach_to_target)) do not
+    /// appear here, because a `(method, params)` pair cannot say which target it
+    /// came from; use [`subscribe_session_events`](Self::subscribe_session_events)
+    /// to see those.
     pub fn subscribe_events(&self) -> broadcast::Receiver<(String, Value)> {
         self.events_tx.subscribe()
+    }
+
+    /// Subscribe to every CDP event on this connection, each tagged with the
+    /// session it came from ([`SessionEvent::session_id`] is `None` for the target
+    /// this client connected to directly).
+    pub fn subscribe_session_events(&self) -> broadcast::Receiver<SessionEvent> {
+        self.session_events_tx.subscribe()
     }
 
     /// Wait for the next event named `method`, up to `timeout_ms` milliseconds.
