@@ -16,10 +16,10 @@ Add to `Cargo.toml`:
 
 ```toml
 [dependencies]
-cdp-driver = "0.3"
+cdp-driver = "0.4"
 
 # optional: synchronous blocking API
-cdp-driver = { version = "0.3", features = ["blocking"] }
+cdp-driver = { version = "0.4", features = ["blocking"] }
 ```
 
 ## Usage
