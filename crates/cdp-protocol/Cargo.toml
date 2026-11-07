@@ -1,6 +1,6 @@
 [package]
 name = "cdp-driver"
-version = "0.4.0"
+version = "0.5.0"
 edition = "2024"
 rust-version = "1.88"
 description = "Chrome DevTools Protocol (CDP) client for Rust: every command, event and type generated from the schema, with sessions, for browser automation and AI agents"

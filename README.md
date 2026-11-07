@@ -23,7 +23,7 @@ connection.
 
 ```toml
 [dependencies]
-cdp-driver = "0.4"
+cdp-driver = "0.5"
 ```
 
 ## How it talks to Chrome
