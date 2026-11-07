@@ -4,7 +4,7 @@ Chrome DevTools Protocol (CDP) client. WebSocket-based browser automation for AI
 agents, web scraping, and testing. Rust core, with first-class Node/Deno/Bun
 bindings.
 
-Complete protocol coverage: all 664 commands, 233 events and 608 types are
+Complete protocol coverage: all 677 commands, 232 events and 611 types are
 generated from the published schema as typed structs, with sessions for reaching
 other tabs, iframes and workers over one connection.
 

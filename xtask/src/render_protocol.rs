@@ -6,7 +6,7 @@ use crate::docs::{defuse, wrap};
 use crate::names::pascal;
 use crate::render::BANNER;
 use crate::schema::{Command, Domain, Event, Field, Items, Type};
-use crate::types::{field_name, inline_enum_name, variant_name, Owner, Registry};
+use crate::types::{Owner, Registry, field_name, inline_enum_name, variant_name};
 
 /// What every generated struct derives. `PartialEq` is here because a decoded
 /// payload is worth comparing in a test; `Eq` is not, because CDP has `number`

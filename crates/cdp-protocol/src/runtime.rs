@@ -1,6 +1,6 @@
 //! Evaluating JavaScript in the page.
 
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 use crate::client::CdpClient;
 use crate::error::{CdpError, Result};

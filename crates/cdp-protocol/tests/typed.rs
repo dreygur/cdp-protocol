@@ -16,7 +16,7 @@ use cdp_driver::protocol::runtime::{ConsoleApiCalledEvent, ConsoleApiCalledType}
 use cdp_driver::protocol::target::{CreateTargetParams, CreateTargetReturns};
 use cdp_driver::typed::{self, NoReturns};
 use cdp_driver::{CdpClient, Command as _, Event as _, SessionEvent};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 use mock_cdp::{Command, Reply};
 

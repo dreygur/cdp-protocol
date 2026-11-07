@@ -1,6 +1,6 @@
 //! Running [`BrowserAction`]s against a tab and reporting how each one went.
 
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use tokio::sync::broadcast;
 
 use crate::action_parse::parse_action;

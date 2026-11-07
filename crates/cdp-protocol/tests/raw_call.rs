@@ -12,9 +12,9 @@ use std::time::Duration;
 
 use cdp_driver::{BrowserAction, BrowserAgent, CdpClient, CdpError};
 use serde::Deserialize;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
-use mock_cdp::{Command, Reply, INVALID_PARAMS, METHOD_NOT_FOUND};
+use mock_cdp::{Command, INVALID_PARAMS, METHOD_NOT_FOUND, Reply};
 
 /// Long enough that a loopback round trip is never the reason a test fails.
 const PATIENT: Duration = Duration::from_secs(5);

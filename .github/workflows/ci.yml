@@ -23,3 +23,12 @@ jobs:
         with:
           tool: just
       - run: just ci
+
+  msrv:
+    name: msrv (1.88)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@1.88
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo check -p cdp-driver --all-targets --all-features

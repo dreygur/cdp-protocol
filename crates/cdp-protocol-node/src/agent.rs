@@ -7,7 +7,7 @@ use napi::bindgen_prelude::Result;
 use napi_derive::napi;
 use serde_json::Value;
 
-use crate::action_result::{core_result, ActionResult};
+use crate::action_result::{ActionResult, core_result};
 use crate::config::Config;
 use crate::errors::{json_err, to_napi};
 

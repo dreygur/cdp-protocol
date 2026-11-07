@@ -1,11 +1,16 @@
 [package]
 name = "cdp-driver"
 version = "0.4.0"
-edition = "2021"
-description = "Chrome DevTools Protocol client for AI agent browser control"
+edition = "2024"
+rust-version = "1.88"
+description = "Chrome DevTools Protocol (CDP) client for Rust: every command, event and type generated from the schema, with sessions, for browser automation and AI agents"
 authors = ["Rakibul Yeasin <ryeasin03@gmail.com>"]
 license = "MIT"
 repository = "https://github.com/dreygur/cdp-protocol"
+documentation = "https://docs.rs/cdp-driver"
+readme = "README.md"
+keywords = ["cdp", "chrome", "devtools", "browser-automation", "headless"]
+categories = ["web-programming", "api-bindings", "development-tools::testing", "asynchronous"]
 
 [features]
 blocking = []

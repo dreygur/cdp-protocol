@@ -5,16 +5,16 @@
 //! as `impl CdpClient` blocks.
 
 use std::collections::HashMap;
-use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
 
 use futures_util::{Sink, Stream};
 use futures_util::{SinkExt, StreamExt};
-use serde::de::DeserializeOwned;
 use serde::Serialize;
-use serde_json::{json, Value};
-use tokio::sync::{broadcast, mpsc, oneshot, Mutex};
+use serde::de::DeserializeOwned;
+use serde_json::{Value, json};
+use tokio::sync::{Mutex, broadcast, mpsc, oneshot};
 use tokio_tungstenite::connect_async;
 use tokio_tungstenite::tungstenite::{Error as WsError, Message};
 use tracing::{debug, warn};

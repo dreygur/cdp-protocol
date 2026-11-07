@@ -1,6 +1,6 @@
 //! Reaching CDP domains this crate has no typed wrapper for.
 //!
-//! `CdpClient` wraps 38 of the protocol's 664 commands. The rest are reachable
+//! `CdpClient` wraps 38 of the protocol's 677 commands. The rest are reachable
 //! through `call` and `call_raw`, keyed by the constants in `cdp_driver::methods`
 //! so the compiler rejects a misspelled method name.
 //!

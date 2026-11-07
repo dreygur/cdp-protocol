@@ -1,6 +1,6 @@
 use cdp_driver::{
-    cluster::{Cluster, ClusterConfig},
     Config, Result,
+    cluster::{Cluster, ClusterConfig},
 };
 
 #[path = "common/logging.rs"]

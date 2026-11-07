@@ -1,7 +1,7 @@
 //! Capturing the page as a PNG.
 
 use base64::Engine;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 use crate::client::CdpClient;
 use crate::error::{CdpError, Result};

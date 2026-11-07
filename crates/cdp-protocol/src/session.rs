@@ -9,7 +9,7 @@
 
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use tokio::sync::broadcast;
 
 use crate::client::CdpClient;
@@ -109,7 +109,7 @@ impl<'a> CdpSession<'a> {
                         if event.method == method
                             && event.session_id.as_deref() == Some(session_id.as_str()) =>
                     {
-                        return Ok(event.params)
+                        return Ok(event.params);
                     }
                     Ok(_) => continue,
                     Err(broadcast::error::RecvError::Lagged(_)) => continue,

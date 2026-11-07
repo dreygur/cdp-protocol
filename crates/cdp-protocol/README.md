@@ -2,7 +2,7 @@
 
 Chrome DevTools Protocol (CDP) client in Rust. WebSocket-based browser automation for AI agents, web scraping, and testing.
 
-Covers the whole protocol: all 664 commands, 233 events and 608 types are
+Covers the whole protocol: all 677 commands, 232 events and 611 types are
 generated from the published schema, alongside a small hand-written API for the
 things you reach for constantly.
 
@@ -397,7 +397,7 @@ src/
 ├── client.rs         # the session: socket, command channel, frame routing, events
 ├── session.rs        # CdpSession, attaching to other targets
 ├── typed.rs          # Command and Event traits, send/wait_for/decode
-├── protocol/         # generated: 664 commands, 233 events, 608 types
+├── protocol/         # generated: 677 commands, 232 events, 611 types
 ├── methods/          # generated: a name constant per command
 ├── discovery.rs      # Chrome's HTTP /json endpoints
 ├── page.rs           # navigation, emulation, PDF, geolocation

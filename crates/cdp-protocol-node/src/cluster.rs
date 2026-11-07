@@ -8,7 +8,7 @@ use napi_derive::napi;
 use serde_json::Value;
 use tokio::sync::{Mutex, Semaphore};
 
-use crate::action_result::{core_result, ActionResult};
+use crate::action_result::{ActionResult, core_result};
 use crate::errors::{json_err, to_napi};
 
 /// Result of one clustered task.

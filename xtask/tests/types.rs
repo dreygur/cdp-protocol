@@ -7,7 +7,7 @@
 use serde_json::json;
 
 use xtask::schema::{self, Field};
-use xtask::types::{field_name, inline_enum_name, registry, Owner, Registry};
+use xtask::types::{Owner, Registry, field_name, inline_enum_name, registry};
 use xtask::{repository_root, types};
 
 /// Every mapping question is asked against the real vendored schema, so that a
