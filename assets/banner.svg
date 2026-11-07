@@ -1,0 +1,50 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="880" height="220" viewBox="0 0 880 220" role="img" aria-labelledby="title desc">
+  <title id="title">Rust CDP client</title>
+  <desc id="desc">A Rust program talking to Chrome over the DevTools Protocol WebSocket.</desc>
+  <style>
+    .bg { fill: #f6f8fa; stroke: #d0d7de; }
+    .ink { fill: #1f2328; }
+    .muted { fill: #59636e; }
+    .box { fill: #ffffff; stroke: #1f2328; }
+    .rust { fill: #ce422b; }
+    .chrome { fill: #1a73e8; }
+    .wire { stroke: #59636e; }
+    .pulse { fill: #ce422b; }
+    .pulse-back { fill: #1a73e8; }
+    text { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+    @media (prefers-color-scheme: dark) {
+      .bg { fill: #161b22; stroke: #30363d; }
+      .ink { fill: #e6edf3; }
+      .muted { fill: #9198a1; }
+      .box { fill: #0d1117; stroke: #e6edf3; }
+      .wire { stroke: #9198a1; }
+      .rust, .pulse { fill: #f0643f; }
+      .chrome, .pulse-back { fill: #58a6ff; }
+    }
+  </style>
+
+  <rect class="bg" x="1" y="1" width="878" height="218" rx="14" stroke-width="2"/>
+
+  <text class="ink" x="44" y="88" font-size="40" font-weight="700">Rust CDP client</text>
+  <text class="muted" x="46" y="124" font-size="16">Chrome DevTools Protocol, typed end to end</text>
+  <text class="muted" x="46" y="168" font-size="14">677 commands · 232 events · 611 types · 59 domains</text>
+
+  <rect class="box" x="508" y="72" width="120" height="76" rx="10" stroke-width="2"/>
+  <rect class="rust" x="508" y="72" width="120" height="10" rx="4"/>
+  <text class="ink" x="568" y="118" font-size="16" text-anchor="middle">your code</text>
+
+  <rect class="box" x="732" y="72" width="120" height="76" rx="10" stroke-width="2"/>
+  <rect class="chrome" x="732" y="72" width="120" height="10" rx="4"/>
+  <text class="ink" x="792" y="118" font-size="16" text-anchor="middle">Chrome</text>
+
+  <line class="wire" x1="628" y1="100" x2="732" y2="100" stroke-width="2" stroke-dasharray="6 5"/>
+  <line class="wire" x1="628" y1="122" x2="732" y2="122" stroke-width="2" stroke-dasharray="6 5"/>
+  <text class="muted" x="680" y="170" font-size="12" text-anchor="middle">WebSocket</text>
+
+  <circle class="pulse" r="5" cy="100">
+    <animate attributeName="cx" from="634" to="726" dur="1.8s" repeatCount="indefinite"/>
+  </circle>
+  <circle class="pulse-back" r="5" cy="122">
+    <animate attributeName="cx" from="726" to="634" dur="1.8s" begin="0.9s" repeatCount="indefinite"/>
+  </circle>
+</svg>
