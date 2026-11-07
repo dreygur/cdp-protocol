@@ -21,7 +21,7 @@ jobs:
   #     - uses: actions/checkout@v7
   #     - uses: actions/setup-node@v6
   #       with:
-  #         node-version: 20
+  #         node-version: 24
   #     - uses: dtolnay/rust-toolchain@stable
   #     - uses: browser-actions/setup-chrome@v2
   #       id: chrome
@@ -55,7 +55,7 @@ jobs:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v6
         with:
-          node-version: 20
+          node-version: 24
       - uses: dtolnay/rust-toolchain@stable
       - run: cargo test -p cdp-driver
       - run: node crates/cdp-protocol-node/version-check.mjs
@@ -82,7 +82,7 @@ jobs:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v6
         with:
-          node-version: 20
+          node-version: 24
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: ${{ matrix.target }}
