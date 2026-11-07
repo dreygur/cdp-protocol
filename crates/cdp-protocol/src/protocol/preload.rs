@@ -316,6 +316,8 @@ pub enum PrerenderFinalStatus {
     FormSubmitWhenPrerendering,
     /// `CrossDocumentRestart`
     CrossDocumentRestart,
+    /// `PrefetchFailedCrossOriginSubframe`
+    PrefetchFailedCrossOriginSubframe,
     /// A value this vendored schema does not list. Chrome adds values ahead of
     /// the published protocol, so an unrecognised one is kept as it arrived
     /// rather than failing the payload it came in.
@@ -382,6 +384,8 @@ pub enum PrefetchStatus {
     PrefetchNotEligibleBlockedByConnectionAllowlist,
     /// `PrefetchNotEligibleBrowserContextOffTheRecord`
     PrefetchNotEligibleBrowserContextOffTheRecord,
+    /// `PrefetchNotEligibleCrossOrigin`
+    PrefetchNotEligibleCrossOrigin,
     /// `PrefetchNotEligibleDataSaverEnabled`
     PrefetchNotEligibleDataSaverEnabled,
     /// `PrefetchNotEligibleExistingProxy`
@@ -545,6 +549,15 @@ pub struct PrerenderStatusUpdatedEvent {
     #[serde(rename = "pipelineId")]
     pub pipeline_id: PreloadPipelineId,
     pub status: PreloadingStatus,
+    /// The action currently performed by this attempt. This differs from
+    /// `key.action` after a prerender-until-script attempt is upgraded in place
+    /// to a full prerender.
+    #[serde(
+        rename = "effectiveAction",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub effective_action: Option<SpeculationAction>,
     #[serde(
         rename = "prerenderStatus",
         default,

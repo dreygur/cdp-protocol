@@ -107,5 +107,5 @@ pub const SET_AUTOMATIC_PRESENCE_SIMULATION: &str = "WebAuthn.setAutomaticPresen
 /// - `backupState`: boolean (optional)
 /// - `activeCmtgKeyIndex`: integer (optional)
 /// - `generateCmtgKeyOnNextOperation`: boolean (optional)
-/// - `signCount`: integer (optional)
+/// - `signCount`: number (optional)
 pub const SET_CREDENTIAL_PROPERTIES: &str = "WebAuthn.setCredentialProperties";

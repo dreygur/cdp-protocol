@@ -65,6 +65,20 @@ pub struct AdMetrics {
     pub remove_ad_frames: Vec<crate::protocol::page::FrameId>,
 }
 
+/// An ad script. Note: when the script is a transitive ad script, we only
+/// fill in the immediate ancestor script in the provenance's adScriptAncestry
+/// field (as its first entry), rather than filling in the full ancestry. This
+/// saves work for the backend, and the frontend can reconstruct the full
+/// ancestry if necessary.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct AdScript {
+    /// The script ID.
+    #[serde(rename = "scriptId")]
+    pub script_id: crate::protocol::runtime::ScriptId,
+    /// The ad provenance.
+    pub provenance: crate::protocol::network::AdProvenance,
+}
+
 /// Retrieves ad metrics for the current page.
 ///
 /// Parameters of `Ads.getAdMetrics`.
@@ -80,4 +94,24 @@ pub struct GetAdMetricsReturns {
 impl crate::typed::Command for GetAdMetricsParams {
     const METHOD: &'static str = "Ads.getAdMetrics";
     type Returns = GetAdMetricsReturns;
+}
+
+/// Retrieves ad scripts for the current page. To minimize payload size, this
+/// only returns the newly tracked ad scripts since the last call to
+/// getAdScripts (i.e., the delta).
+///
+/// Parameters of `Ads.getAdScripts`.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct GetAdScriptsParams {}
+
+/// What `Ads.getAdScripts` answers with.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct GetAdScriptsReturns {
+    #[serde(rename = "newScripts")]
+    pub new_scripts: Vec<AdScript>,
+}
+
+impl crate::typed::Command for GetAdScriptsParams {
+    const METHOD: &'static str = "Ads.getAdScripts";
+    type Returns = GetAdScriptsReturns;
 }

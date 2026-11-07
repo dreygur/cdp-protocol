@@ -1267,8 +1267,6 @@ pub enum SetCookieBlockedReason {
     UserPreferences,
     /// `ThirdPartyPhaseout`
     ThirdPartyPhaseout,
-    /// `ThirdPartyBlockedInFirstPartySet`
-    ThirdPartyBlockedInFirstPartySet,
     /// `SyntaxError`
     SyntaxError,
     /// `SchemeNotSupported`
@@ -1323,8 +1321,6 @@ pub enum CookieBlockedReason {
     UserPreferences,
     /// `ThirdPartyPhaseout`
     ThirdPartyPhaseout,
-    /// `ThirdPartyBlockedInFirstPartySet`
-    ThirdPartyBlockedInFirstPartySet,
     /// `UnknownError`
     UnknownError,
     /// `SchemefulSameSiteStrict`
@@ -1708,30 +1704,6 @@ pub struct SignedExchangeInfo {
     pub errors: Option<Vec<SignedExchangeError>>,
 }
 
-/// List of content encodings supported by the backend.
-///
-/// Experimental: may change without notice.
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub enum ContentEncoding {
-    /// `deflate`
-    #[serde(rename = "deflate")]
-    Deflate,
-    /// `gzip`
-    #[serde(rename = "gzip")]
-    Gzip,
-    /// `br`
-    #[serde(rename = "br")]
-    Br,
-    /// `zstd`
-    #[serde(rename = "zstd")]
-    Zstd,
-    /// A value this vendored schema does not list. Chrome adds values ahead of
-    /// the published protocol, so an unrecognised one is kept as it arrived
-    /// rather than failing the payload it came in.
-    #[serde(untagged)]
-    Unrecognized(String),
-}
-
 /// Experimental: may change without notice.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct NetworkConditions {
@@ -2049,7 +2021,9 @@ pub struct AdProvenance {
         skip_serializing_if = "Option::is_none"
     )]
     pub filterlist_rule: Option<String>,
-    /// The script ancestry that created the ad, if any.
+    /// The script ancestry that created the ad, if any. Note: depending on the
+    /// context, this may represent the full ancestry up to the root script, or it
+    /// may contain only one script representing the immediate ancestor.
     #[serde(
         rename = "adScriptAncestry",
         default,
@@ -2542,6 +2516,12 @@ pub enum DeviceBoundSessionFetchResult {
     PreProvisionedKeyAccessNotGranted,
     /// `PreProvisionedKeyNotFound`
     PreProvisionedKeyNotFound,
+    /// `AttestationCertificationError`
+    AttestationCertificationError,
+    /// `AttestationSigningError`
+    AttestationSigningError,
+    /// `FederatedRegistrationRedirected`
+    FederatedRegistrationRedirected,
     /// A value this vendored schema does not list. Chrome adds values ahead of
     /// the published protocol, so an unrecognised one is kept as it arrived
     /// rather than failing the payload it came in.
@@ -2663,6 +2643,8 @@ pub enum RefreshEventDetailsRefreshResult {
     TransientSigningError,
     /// `InScopeRefreshNotYetNeeded`
     InScopeRefreshNotYetNeeded,
+    /// `Canceled`
+    Canceled,
     /// A value this vendored schema does not list. Chrome adds values ahead of
     /// the published protocol, so an unrecognised one is kept as it arrived
     /// rather than failing the payload it came in.
@@ -2701,6 +2683,8 @@ pub enum TerminationEventDetailsDeletionReason {
     RefreshFatalError,
     /// `DevTools`
     DevTools,
+    /// `Replaced`
+    Replaced,
     /// A value this vendored schema does not list. Chrome adds values ahead of
     /// the published protocol, so an unrecognised one is kept as it arrived
     /// rather than failing the payload it came in.
@@ -2777,36 +2761,6 @@ pub struct LoadNetworkResourceOptions {
     pub disable_cache: bool,
     #[serde(rename = "includeCredentials")]
     pub include_credentials: bool,
-}
-
-/// Sets a list of content encodings that will be accepted. Empty list means
-/// no encoding is accepted.
-///
-/// Experimental: may change without notice.
-///
-/// Parameters of `Network.setAcceptedEncodings`.
-#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
-pub struct SetAcceptedEncodingsParams {
-    /// List of accepted content encodings.
-    pub encodings: Vec<ContentEncoding>,
-}
-
-impl crate::typed::Command for SetAcceptedEncodingsParams {
-    const METHOD: &'static str = "Network.setAcceptedEncodings";
-    type Returns = crate::typed::NoReturns;
-}
-
-/// Clears accepted encodings set by setAcceptedEncodings
-///
-/// Experimental: may change without notice.
-///
-/// Parameters of `Network.clearAcceptedEncodingsOverride`.
-#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
-pub struct ClearAcceptedEncodingsOverrideParams {}
-
-impl crate::typed::Command for ClearAcceptedEncodingsOverrideParams {
-    const METHOD: &'static str = "Network.clearAcceptedEncodingsOverride";
-    type Returns = crate::typed::NoReturns;
 }
 
 /// Tells whether clearing browser cache is supported.
@@ -3851,6 +3805,16 @@ pub struct LoadingFinishedEvent {
     /// Total number of bytes received for this request.
     #[serde(rename = "encodedDataLength")]
     pub encoded_data_length: f64,
+    /// Size of the response body before removing content encodings. Includes
+    /// cached bodies, but excludes headers and transfer framing.
+    ///
+    /// Experimental: may change without notice.
+    #[serde(
+        rename = "encodedBodyLength",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub encoded_body_length: Option<f64>,
 }
 
 impl crate::typed::Event for LoadingFinishedEvent {
@@ -4307,8 +4271,17 @@ impl crate::typed::Event for DirectTcpSocketChunkReceivedEvent {
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct DirectUdpSocketJoinedMulticastGroupEvent {
     pub identifier: RequestId,
+    /// Multicast group address.
     #[serde(rename = "IPAddress")]
     pub ip_address: String,
+    /// Source address of a source-specific multicast (SSM) membership. Absent for
+    /// any-source multicast (ASM) memberships.
+    #[serde(
+        rename = "sourceAddress",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub source_address: Option<String>,
 }
 
 impl crate::typed::Event for DirectUdpSocketJoinedMulticastGroupEvent {
@@ -4321,8 +4294,17 @@ impl crate::typed::Event for DirectUdpSocketJoinedMulticastGroupEvent {
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct DirectUdpSocketLeftMulticastGroupEvent {
     pub identifier: RequestId,
+    /// Multicast group address.
     #[serde(rename = "IPAddress")]
     pub ip_address: String,
+    /// Source address of a source-specific multicast (SSM) membership. Absent for
+    /// any-source multicast (ASM) memberships.
+    #[serde(
+        rename = "sourceAddress",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub source_address: Option<String>,
 }
 
 impl crate::typed::Event for DirectUdpSocketLeftMulticastGroupEvent {

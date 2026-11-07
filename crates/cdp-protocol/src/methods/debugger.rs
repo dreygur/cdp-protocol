@@ -271,12 +271,10 @@ pub const SET_PAUSE_ON_EXCEPTIONS: &str = "Debugger.setPauseOnExceptions";
 /// - `newValue`: Runtime.CallArgument
 pub const SET_RETURN_VALUE: &str = "Debugger.setReturnValue";
 
-/// Edits JavaScript source live. In general, functions that are currently on
-/// the stack can not be edited with a single exception: If the edited
-/// function is the top-most stack frame and that is the only activation of
-/// that function on the stack. In this case the live edit will be successful
-/// and a `Debugger.restartFrame` for the top-most function is automatically
-/// triggered.
+/// Live edit is no longer supported and this command always fails with a "no
+/// longer available" error.
+///
+/// Deprecated in the protocol.
 ///
 /// Parameters:
 /// - `scriptId`: Runtime.ScriptId
@@ -318,4 +316,5 @@ pub const STEP_OUT: &str = "Debugger.stepOut";
 ///
 /// Parameters:
 /// - `skipList`: array (optional)
+/// - `enterRanges`: array (optional)
 pub const STEP_OVER: &str = "Debugger.stepOver";

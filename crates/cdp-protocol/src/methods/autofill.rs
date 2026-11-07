@@ -9,7 +9,8 @@
 //! This domain is experimental and may change without notice.
 
 /// Trigger autofill on a form identified by the fieldId. If the field and
-/// related form cannot be autofilled, returns an error.
+/// related form cannot be autofilled, returns an error. Returns once the
+/// values have been applied to the form fields.
 ///
 /// Parameters:
 /// - `fieldId`: DOM.BackendNodeId

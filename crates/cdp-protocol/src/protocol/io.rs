@@ -68,6 +68,8 @@ impl crate::typed::Command for ReadParams {
 
 /// Return UUID of Blob object specified by a remote object id.
 ///
+/// Deprecated in the protocol.
+///
 /// Parameters of `IO.resolveBlob`.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct ResolveBlobParams {

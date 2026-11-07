@@ -322,6 +322,80 @@ pub enum ContrastAlgorithm {
     Unrecognized(String),
 }
 
+/// Configuration for Inset-Modified Containing Block (IMCB) and CSS Anchor
+/// Positioning highlight.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct ImcbHighlightConfig {
+    /// Border color for the Inset-Modified Containing Block (default:
+    /// transparent).
+    #[serde(
+        rename = "imcbBorderColor",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub imcb_border_color: Option<crate::protocol::dom::Rgba>,
+    /// Background fill color for the Inset-Modified Containing Block (default:
+    /// transparent).
+    #[serde(
+        rename = "imcbBackgroundColor",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub imcb_background_color: Option<crate::protocol::dom::Rgba>,
+    /// Fill color for the inset modifiers area (difference between CB and IMCB).
+    #[serde(
+        rename = "insetsBackgroundColor",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub insets_background_color: Option<crate::protocol::dom::Rgba>,
+    /// Hatch color for the inset modifiers area.
+    #[serde(
+        rename = "insetsHatchColor",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub insets_hatch_color: Option<crate::protocol::dom::Rgba>,
+    /// Border color for the referenced target anchor element(s) (when element is
+    /// anchor-positioned).
+    #[serde(
+        rename = "anchorBorderColor",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub anchor_border_color: Option<crate::protocol::dom::Rgba>,
+    /// Background fill color for the referenced target anchor element(s) (when
+    /// element is anchor-positioned).
+    #[serde(
+        rename = "anchorBackgroundColor",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub anchor_background_color: Option<crate::protocol::dom::Rgba>,
+    /// Whether to render the 3x3 position-area grid lines when position-area is
+    /// used.
+    #[serde(
+        rename = "showPositionAreaGrid",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub show_position_area_grid: Option<bool>,
+    /// Line color for the 3x3 position-area grid lines.
+    #[serde(
+        rename = "positionAreaGridLineColor",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub position_area_grid_line_color: Option<crate::protocol::dom::Rgba>,
+    /// Fill color for the active region within the position-area grid.
+    #[serde(
+        rename = "positionAreaActiveRegionColor",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub position_area_active_region_color: Option<crate::protocol::dom::Rgba>,
+}
+
 /// Configuration data for the highlighting of page elements.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct HighlightConfig {
@@ -456,6 +530,13 @@ pub struct HighlightConfig {
         skip_serializing_if = "Option::is_none"
     )]
     pub container_query_container_highlight_config: Option<ContainerQueryContainerHighlightConfig>,
+    /// The IMCB highlight configuration (default: all transparent).
+    #[serde(
+        rename = "imcbHighlightConfig",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub imcb_highlight_config: Option<ImcbHighlightConfig>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]

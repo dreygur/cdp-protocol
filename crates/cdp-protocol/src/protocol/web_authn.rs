@@ -47,6 +47,7 @@ pub enum Ctap2Version {
     Unrecognized(String),
 }
 
+/// LINT.IfChange(AuthenticatorTransport)
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum AuthenticatorTransport {
     /// `usb`
@@ -61,6 +62,12 @@ pub enum AuthenticatorTransport {
     /// `cable`
     #[serde(rename = "cable")]
     Cable,
+    /// `hybrid`
+    #[serde(rename = "hybrid")]
+    Hybrid,
+    /// `smart-card`
+    #[serde(rename = "smart-card")]
+    SmartCard,
     /// `internal`
     #[serde(rename = "internal")]
     Internal,
@@ -218,7 +225,7 @@ pub struct Credential {
     /// operation will report a value of 0. See
     /// <https://w3c.github.io/webauthn/#signature-counter>
     #[serde(rename = "signCount")]
-    pub sign_count: i64,
+    pub sign_count: f64,
     /// The large blob associated with the credential. See
     /// <https://w3c.github.io/webauthn/#sctn-large-blob-extension> (Encoded as a
     /// base64 string when passed over JSON)
@@ -530,7 +537,7 @@ pub struct SetCredentialPropertiesParams {
     /// removed from the credential, and every assertion operation will report a
     /// value of 0. See <https://w3c.github.io/webauthn/#signature-counter>
     #[serde(rename = "signCount", default, skip_serializing_if = "Option::is_none")]
-    pub sign_count: Option<i64>,
+    pub sign_count: Option<f64>,
 }
 
 impl crate::typed::Command for SetCredentialPropertiesParams {

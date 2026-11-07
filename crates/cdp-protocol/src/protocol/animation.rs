@@ -272,9 +272,22 @@ impl crate::typed::Command for ResolveAnimationParams {
 pub struct SeekAnimationsParams {
     /// List of animation ids to seek.
     pub animations: Vec<String>,
-    /// Set the current time of each animation.
-    #[serde(rename = "currentTime")]
-    pub current_time: f64,
+    /// Set each animation to the same time.
+    #[serde(
+        rename = "currentTime",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub current_time: Option<f64>,
+    /// Set each animation to a different time. If set, should have the same
+    /// length as animations. Exactly one of currentTime or currentTimes should be
+    /// set.
+    #[serde(
+        rename = "currentTimes",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub current_times: Option<Vec<f64>>,
 }
 
 impl crate::typed::Command for SeekAnimationsParams {

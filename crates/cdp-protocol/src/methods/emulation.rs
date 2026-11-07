@@ -64,6 +64,21 @@ pub const SET_DEFAULT_BACKGROUND_COLOR_OVERRIDE: &str =
 /// - `insets`: SafeAreaInsets
 pub const SET_SAFE_AREA_INSETS_OVERRIDE: &str = "Emulation.setSafeAreaInsetsOverride";
 
+/// Overrides virtual keyboard geometry in CSS pixels, relative to the
+/// top-level viewport. The provided rect is used for
+/// navigator.virtualKeyboard.boundingRect, geometrychange events, and
+/// env(keyboard-inset-*) values on the inspected frame. The override applies
+/// independently of navigator.virtualKeyboard.overlaysContent so clients can
+/// preview overlay geometry without mutating page state. Values are rounded
+/// to the nearest CSS pixel. Omitting the rect clears the override.
+///
+/// Experimental: may change without notice.
+///
+/// Parameters:
+/// - `keyboardRect`: DOM.Rect (optional)
+pub const SET_VIRTUAL_KEYBOARD_GEOMETRY_OVERRIDE: &str =
+    "Emulation.setVirtualKeyboardGeometryOverride";
+
 /// Overrides the values of device screen dimensions (window.screen.width,
 /// window.screen.height, window.innerWidth, window.innerHeight, and
 /// "device-width"/"device-height"-related CSS media query results).
@@ -85,6 +100,8 @@ pub const SET_SAFE_AREA_INSETS_OVERRIDE: &str = "Emulation.setSafeAreaInsetsOver
 /// - `devicePosture`: DevicePosture (optional)
 /// - `scrollbarType`: string (optional)
 /// - `screenOrientationLockEmulation`: boolean (optional)
+/// - `viewportMeta`: string (optional)
+/// - `textLayoutMode`: string (optional)
 pub const SET_DEVICE_METRICS_OVERRIDE: &str = "Emulation.setDeviceMetricsOverride";
 
 /// Start reporting the given posture value to the Device Posture API. This
@@ -340,6 +357,14 @@ pub const SET_DATA_SAVER_OVERRIDE: &str = "Emulation.setDataSaverOverride";
 /// Parameters:
 /// - `hardwareConcurrency`: integer
 pub const SET_HARDWARE_CONCURRENCY_OVERRIDE: &str = "Emulation.setHardwareConcurrencyOverride";
+
+/// Overrides the value of navigator.cpuPerformance
+///
+/// Experimental: may change without notice.
+///
+/// Parameters:
+/// - `performanceTier`: string (optional)
+pub const SET_CPU_PERFORMANCE_OVERRIDE: &str = "Emulation.setCPUPerformanceOverride";
 
 /// Allows overriding user agent with the given string. `userAgentMetadata`
 /// must be set for Client Hint headers to be sent.

@@ -24,6 +24,8 @@ pub const READ: &str = "IO.read";
 
 /// Return UUID of Blob object specified by a remote object id.
 ///
+/// Deprecated in the protocol.
+///
 /// Parameters:
 /// - `objectId`: Runtime.RemoteObjectId
 ///

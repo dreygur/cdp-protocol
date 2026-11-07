@@ -133,6 +133,19 @@ pub struct Scope {
         skip_serializing_if = "Option::is_none"
     )]
     pub end_location: Option<Location>,
+    /// Present if the scope has no variable values to show. Absent means that the
+    /// scope declares at least one variable with an available value. Empty scopes
+    /// are retained in the scope chain because they can be targeted via
+    /// `evaluateOnCallFrame` (using `scopeNumber`) or matched against scopes in
+    /// source maps.
+    ///
+    /// Experimental: may change without notice.
+    #[serde(
+        rename = "emptyReason",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub empty_reason: Option<ScopeEmptyReason>,
 }
 
 /// The values `type` accepts on `Scope`.
@@ -168,6 +181,22 @@ pub enum ScopeType {
     /// `wasm-expression-stack`
     #[serde(rename = "wasm-expression-stack")]
     WasmExpressionStack,
+    /// A value this vendored schema does not list. Chrome adds values ahead of
+    /// the published protocol, so an unrecognised one is kept as it arrived
+    /// rather than failing the payload it came in.
+    #[serde(untagged)]
+    Unrecognized(String),
+}
+
+/// The values `emptyReason` accepts on `Scope`.
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum ScopeEmptyReason {
+    /// `no-variables`
+    #[serde(rename = "no-variables")]
+    NoVariables,
+    /// `all-unavailable`
+    #[serde(rename = "all-unavailable")]
+    AllUnavailable,
     /// A value this vendored schema does not list. Chrome adds values ahead of
     /// the published protocol, so an unrecognised one is kept as it arrived
     /// rather than failing the payload it came in.
@@ -1102,12 +1131,10 @@ impl crate::typed::Command for SetReturnValueParams {
     type Returns = crate::typed::NoReturns;
 }
 
-/// Edits JavaScript source live. In general, functions that are currently on
-/// the stack can not be edited with a single exception: If the edited
-/// function is the top-most stack frame and that is the only activation of
-/// that function on the stack. In this case the live edit will be successful
-/// and a `Debugger.restartFrame` for the top-most function is automatically
-/// triggered.
+/// Live edit is no longer supported and this command always fails with a "no
+/// longer available" error.
+///
+/// Deprecated in the protocol.
 ///
 /// Parameters of `Debugger.setScriptSource`.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
@@ -1306,6 +1333,17 @@ pub struct StepOverParams {
     /// Experimental: may change without notice.
     #[serde(rename = "skipList", default, skip_serializing_if = "Option::is_none")]
     pub skip_list: Option<Vec<LocationRange>>,
+    /// Functions whose source range lies within one of the enterRanges are
+    /// entered as if by stepInto, even when they are called (directly or
+    /// indirectly) from a call that is stepped over.
+    ///
+    /// Experimental: may change without notice.
+    #[serde(
+        rename = "enterRanges",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub enter_ranges: Option<Vec<LocationRange>>,
 }
 
 impl crate::typed::Command for StepOverParams {

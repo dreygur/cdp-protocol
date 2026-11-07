@@ -152,70 +152,48 @@ pub const GET_TRUST_TOKENS: &str = "Storage.getTrustTokens";
 /// Returns: `didDeleteTokens`
 pub const CLEAR_TRUST_TOKENS: &str = "Storage.clearTrustTokens";
 
-/// Gets metadata for an origin's shared storage.
+/// Returns all stored Private Verification Tokens for the current browsing
+/// context.
+///
+/// Experimental: may change without notice.
+///
+/// Returns: `tokens`
+pub const GET_PRIVATE_VERIFICATION_TOKENS: &str = "Storage.getPrivateVerificationTokens";
+
+/// Returns the configured Private Verification Tokens issuers and their
+/// redeemer origins.
+///
+/// Experimental: may change without notice.
+///
+/// Returns: `configs`
+pub const GET_PRIVATE_VERIFICATION_TOKENS_ISSUER_CONFIGS: &str =
+    "Storage.getPrivateVerificationTokensIssuerConfigs";
+
+/// Removes all Private Verification Tokens issued by the provided
+/// issuerOrigin.
 ///
 /// Experimental: may change without notice.
 ///
 /// Parameters:
-/// - `ownerOrigin`: string
-///
-/// Returns: `metadata`
-pub const GET_SHARED_STORAGE_METADATA: &str = "Storage.getSharedStorageMetadata";
+/// - `issuerOrigin`: string
+pub const CLEAR_PRIVATE_VERIFICATION_TOKENS: &str = "Storage.clearPrivateVerificationTokens";
 
-/// Gets the entries in an given origin's shared storage.
+/// Removes a specific Private Verification Token by its ID.
 ///
 /// Experimental: may change without notice.
 ///
 /// Parameters:
-/// - `ownerOrigin`: string
-///
-/// Returns: `entries`
-pub const GET_SHARED_STORAGE_ENTRIES: &str = "Storage.getSharedStorageEntries";
+/// - `tokenId`: string
+pub const DELETE_PRIVATE_VERIFICATION_TOKEN: &str = "Storage.deletePrivateVerificationToken";
 
-/// Sets entry with `key` and `value` for a given origin's shared storage.
-///
-/// Experimental: may change without notice.
-///
-/// Parameters:
-/// - `ownerOrigin`: string
-/// - `key`: string
-/// - `value`: string
-/// - `ignoreIfPresent`: boolean (optional)
-pub const SET_SHARED_STORAGE_ENTRY: &str = "Storage.setSharedStorageEntry";
-
-/// Deletes entry for `key` (if it exists) for a given origin's shared
-/// storage.
-///
-/// Experimental: may change without notice.
-///
-/// Parameters:
-/// - `ownerOrigin`: string
-/// - `key`: string
-pub const DELETE_SHARED_STORAGE_ENTRY: &str = "Storage.deleteSharedStorageEntry";
-
-/// Clears all entries for a given origin's shared storage.
-///
-/// Experimental: may change without notice.
-///
-/// Parameters:
-/// - `ownerOrigin`: string
-pub const CLEAR_SHARED_STORAGE_ENTRIES: &str = "Storage.clearSharedStorageEntries";
-
-/// Resets the budget for `ownerOrigin` by clearing all budget withdrawals.
-///
-/// Experimental: may change without notice.
-///
-/// Parameters:
-/// - `ownerOrigin`: string
-pub const RESET_SHARED_STORAGE_BUDGET: &str = "Storage.resetSharedStorageBudget";
-
-/// Enables/disables issuing of sharedStorageAccessed events.
+/// Set tracking for Private Verification Tokens.
 ///
 /// Experimental: may change without notice.
 ///
 /// Parameters:
 /// - `enable`: boolean
-pub const SET_SHARED_STORAGE_TRACKING: &str = "Storage.setSharedStorageTracking";
+pub const SET_PRIVATE_VERIFICATION_TOKENS_TRACKING: &str =
+    "Storage.setPrivateVerificationTokensTracking";
 
 /// Set tracking for a storage key's buckets.
 ///
@@ -241,12 +219,3 @@ pub const DELETE_STORAGE_BUCKET: &str = "Storage.deleteStorageBucket";
 ///
 /// Returns: `deletedSites`
 pub const RUN_BOUNCE_TRACKING_MITIGATIONS: &str = "Storage.runBounceTrackingMitigations";
-
-/// Returns the effective Related Website Sets in use by this profile for the
-/// browser session. The effective Related Website Sets will not change during
-/// a browser session.
-///
-/// Experimental: may change without notice.
-///
-/// Returns: `sets`
-pub const GET_RELATED_WEBSITE_SETS: &str = "Storage.getRelatedWebsiteSets";

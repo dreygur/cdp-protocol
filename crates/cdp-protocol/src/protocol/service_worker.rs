@@ -72,6 +72,107 @@ pub enum ServiceWorkerVersionStatus {
     Unrecognized(String),
 }
 
+/// Mostly corresponds to `RouterCondition` in ServiceWorker spec
+/// (<https://www.w3.org/TR/service-workers/#dictdef-routercondition>)
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct ServiceWorkerRouterCondition {
+    /// Plain text, or JSON serialization of URLPatternInit or URLPattern
+    #[serde(
+        rename = "urlPattern",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub url_pattern: Option<String>,
+    #[serde(
+        rename = "requestMethod",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub request_method: Option<String>,
+    #[serde(
+        rename = "requestMode",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub request_mode: Option<String>,
+    #[serde(
+        rename = "requestDestination",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub request_destination: Option<String>,
+    #[serde(
+        rename = "runningStatus",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub running_status: Option<ServiceWorkerVersionRunningStatus>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub or: Option<Vec<ServiceWorkerRouterCondition>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub not: Option<Box<ServiceWorkerRouterCondition>>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum ServiceWorkerRouterSourceType {
+    /// `cache`
+    #[serde(rename = "cache")]
+    Cache,
+    /// `fetchEvent`
+    #[serde(rename = "fetchEvent")]
+    FetchEvent,
+    /// `network`
+    #[serde(rename = "network")]
+    Network,
+    /// `raceNetworkAndFetchHandler`
+    #[serde(rename = "raceNetworkAndFetchHandler")]
+    RaceNetworkAndFetchHandler,
+    /// `raceNetworkAndCache`
+    #[serde(rename = "raceNetworkAndCache")]
+    RaceNetworkAndCache,
+    /// `sourceDict`
+    #[serde(rename = "sourceDict")]
+    SourceDict,
+    /// A value this vendored schema does not list. Chrome adds values ahead of
+    /// the published protocol, so an unrecognised one is kept as it arrived
+    /// rather than failing the payload it came in.
+    #[serde(untagged)]
+    Unrecognized(String),
+}
+
+/// <https://www.w3.org/TR/service-workers/#dictdef-routersourcedict>
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct ServiceWorkerRouterSourceDict {
+    #[serde(rename = "cacheName")]
+    pub cache_name: String,
+}
+
+/// Corresponds to `RouterSource` in the spec while the representation is
+/// different as follows.
+/// (<https://www.w3.org/TR/service-workers/#typedefdef-routersource>) -
+/// `RouterSourceEnum`: `type` equals `cache`, `sourceDict` is null. -
+/// `RouterSourceDict`: `type` equals `sourceDict`, `sourceDict` has valid
+/// value.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ServiceWorkerRouterSource {
+    pub r#type: ServiceWorkerRouterSourceType,
+    /// Non-empty iff `type` equals "sourceDict".
+    #[serde(
+        rename = "sourceDict",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub source_dict: Option<ServiceWorkerRouterSourceDict>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ServiceWorkerRouterRule {
+    pub condition: ServiceWorkerRouterCondition,
+    pub source: ServiceWorkerRouterSource,
+    /// Rule ID assigned by the browser. Unique within each ServiceWorkerVersion.
+    pub id: i64,
+}
+
 /// ServiceWorker version.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ServiceWorkerVersion {
@@ -108,12 +209,21 @@ pub struct ServiceWorkerVersion {
     pub controlled_clients: Option<Vec<crate::protocol::target::TargetId>>,
     #[serde(rename = "targetId", default, skip_serializing_if = "Option::is_none")]
     pub target_id: Option<crate::protocol::target::TargetId>,
+    /// Migration to `typedRouterRules` is in progress. The browser sends either
+    /// `routerRules` or `typedRouterRules`. TODO(crbug.com/540469610): Remove
+    /// `routerRules` after the migration.
     #[serde(
         rename = "routerRules",
         default,
         skip_serializing_if = "Option::is_none"
     )]
     pub router_rules: Option<String>,
+    #[serde(
+        rename = "typedRouterRules",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub typed_router_rules: Option<Vec<ServiceWorkerRouterRule>>,
 }
 
 /// ServiceWorker error message.

@@ -1280,6 +1280,25 @@ impl crate::typed::Command for ForceStartingStyleParams {
     type Returns = crate::typed::NoReturns;
 }
 
+/// Forces a position-try option for the given node.
+///
+/// Parameters of `CSS.forcePositionTryOption`.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct ForcePositionTryOptionParams {
+    /// The element id for which to force the position-try option.
+    #[serde(rename = "nodeId")]
+    pub node_id: crate::protocol::dom::NodeId,
+    /// The 1-based index of the position-try fallback option, 0 for base position
+    /// (no fallback), or omitted to clear the forced state.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub index: Option<i64>,
+}
+
+impl crate::typed::Command for ForcePositionTryOptionParams {
+    const METHOD: &'static str = "CSS.forcePositionTryOption";
+    type Returns = crate::typed::NoReturns;
+}
+
 /// Parameters of `CSS.getBackgroundColors`.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct GetBackgroundColorsParams {

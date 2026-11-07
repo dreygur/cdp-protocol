@@ -8,20 +8,6 @@
 //! Method names for the `Network` domain, for use with
 //! [`CdpClient::call`](crate::CdpClient::call).
 
-/// Sets a list of content encodings that will be accepted. Empty list means
-/// no encoding is accepted.
-///
-/// Experimental: may change without notice.
-///
-/// Parameters:
-/// - `encodings`: array
-pub const SET_ACCEPTED_ENCODINGS: &str = "Network.setAcceptedEncodings";
-
-/// Clears accepted encodings set by setAcceptedEncodings
-///
-/// Experimental: may change without notice.
-pub const CLEAR_ACCEPTED_ENCODINGS_OVERRIDE: &str = "Network.clearAcceptedEncodingsOverride";
-
 /// Tells whether clearing browser cache is supported.
 ///
 /// Deprecated in the protocol.

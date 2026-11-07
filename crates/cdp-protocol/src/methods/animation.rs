@@ -45,7 +45,8 @@ pub const RESOLVE_ANIMATION: &str = "Animation.resolveAnimation";
 ///
 /// Parameters:
 /// - `animations`: array
-/// - `currentTime`: number
+/// - `currentTime`: number (optional)
+/// - `currentTimes`: array (optional)
 pub const SEEK_ANIMATIONS: &str = "Animation.seekAnimations";
 
 /// Sets the paused state of a set of animations.

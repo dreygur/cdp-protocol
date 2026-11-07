@@ -40,9 +40,6 @@ pub enum StorageType {
     /// `cache_storage`
     #[serde(rename = "cache_storage")]
     CacheStorage,
-    /// `shared_storage`
-    #[serde(rename = "shared_storage")]
-    SharedStorage,
     /// `storage_buckets`
     #[serde(rename = "storage_buckets")]
     StorageBuckets,
@@ -80,274 +77,41 @@ pub struct TrustTokens {
     pub count: f64,
 }
 
-/// Enum of shared storage access scopes.
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub enum SharedStorageAccessScope {
-    /// `window`
-    #[serde(rename = "window")]
-    Window,
-    /// `sharedStorageWorklet`
-    #[serde(rename = "sharedStorageWorklet")]
-    SharedStorageWorklet,
-    /// `header`
-    #[serde(rename = "header")]
-    Header,
-    /// A value this vendored schema does not list. Chrome adds values ahead of
-    /// the published protocol, so an unrecognised one is kept as it arrived
-    /// rather than failing the payload it came in.
-    #[serde(untagged)]
-    Unrecognized(String),
-}
-
-/// Enum of shared storage access methods.
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub enum SharedStorageAccessMethod {
-    /// `addModule`
-    #[serde(rename = "addModule")]
-    AddModule,
-    /// `createWorklet`
-    #[serde(rename = "createWorklet")]
-    CreateWorklet,
-    /// `selectURL`
-    #[serde(rename = "selectURL")]
-    SelectUrl,
-    /// `run`
-    #[serde(rename = "run")]
-    Run,
-    /// `batchUpdate`
-    #[serde(rename = "batchUpdate")]
-    BatchUpdate,
-    /// `set`
-    #[serde(rename = "set")]
-    Set,
-    /// `append`
-    #[serde(rename = "append")]
-    Append,
-    /// `delete`
-    #[serde(rename = "delete")]
-    Delete,
-    /// `clear`
-    #[serde(rename = "clear")]
-    Clear,
-    /// `get`
-    #[serde(rename = "get")]
-    Get,
-    /// `keys`
-    #[serde(rename = "keys")]
-    Keys,
-    /// `values`
-    #[serde(rename = "values")]
-    Values,
-    /// `entries`
-    #[serde(rename = "entries")]
-    Entries,
-    /// `length`
-    #[serde(rename = "length")]
-    Length,
-    /// `remainingBudget`
-    #[serde(rename = "remainingBudget")]
-    RemainingBudget,
-    /// A value this vendored schema does not list. Chrome adds values ahead of
-    /// the published protocol, so an unrecognised one is kept as it arrived
-    /// rather than failing the payload it came in.
-    #[serde(untagged)]
-    Unrecognized(String),
-}
-
-/// Struct for a single key-value pair in an origin's shared storage.
+/// Details of a stored Private Verification Token.
+///
+/// Experimental: may change without notice.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
-pub struct SharedStorageEntry {
-    pub key: String,
-    pub value: String,
-}
-
-/// Details for an origin's shared storage.
-#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
-pub struct SharedStorageMetadata {
-    /// Time when the origin's shared storage was last created.
+pub struct PrivateVerificationToken {
+    /// Unique identifier of the token in the database.
+    pub id: String,
+    /// Origin of the token issuer.
+    #[serde(rename = "issuerOrigin")]
+    pub issuer_origin: String,
+    /// Public key ID used to issue the token.
+    #[serde(rename = "keyId")]
+    pub key_id: i64,
+    /// Expiration timestamp in seconds since the epoch.
+    pub expiration: crate::protocol::network::TimeSinceEpoch,
+    /// Token creation timestamp in seconds since the epoch.
     #[serde(rename = "creationTime")]
     pub creation_time: crate::protocol::network::TimeSinceEpoch,
-    /// Number of key-value pairs stored in origin's shared storage.
-    pub length: i64,
-    /// Current amount of bits of entropy remaining in the navigation budget.
-    #[serde(rename = "remainingBudget")]
-    pub remaining_budget: f64,
-    /// Total number of bytes stored as key-value pairs in origin's shared
-    /// storage.
-    #[serde(rename = "bytesUsed")]
-    pub bytes_used: i64,
+    /// Token protocol version.
+    pub version: i64,
+    /// Base64-encoded serialized token.
+    pub token: String,
 }
 
-/// Represents a dictionary object passed in as privateAggregationConfig to
-/// run or selectURL.
+/// Configuration for a Private Verification Tokens issuer.
+///
+/// Experimental: may change without notice.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
-pub struct SharedStoragePrivateAggregationConfig {
-    /// The chosen aggregation service deployment.
-    #[serde(
-        rename = "aggregationCoordinatorOrigin",
-        default,
-        skip_serializing_if = "Option::is_none"
-    )]
-    pub aggregation_coordinator_origin: Option<String>,
-    /// The context ID provided.
-    #[serde(rename = "contextId", default, skip_serializing_if = "Option::is_none")]
-    pub context_id: Option<String>,
-    /// Configures the maximum size allowed for filtering IDs.
-    #[serde(rename = "filteringIdMaxBytes")]
-    pub filtering_id_max_bytes: i64,
-    /// The limit on the number of contributions in the final report.
-    #[serde(
-        rename = "maxContributions",
-        default,
-        skip_serializing_if = "Option::is_none"
-    )]
-    pub max_contributions: Option<i64>,
-}
-
-/// Pair of reporting metadata details for a candidate URL for `selectURL()`.
-#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
-pub struct SharedStorageReportingMetadata {
-    #[serde(rename = "eventType")]
-    pub event_type: String,
-    #[serde(rename = "reportingUrl")]
-    pub reporting_url: String,
-}
-
-/// Bundles a candidate URL with its reporting metadata.
-#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
-pub struct SharedStorageUrlWithMetadata {
-    /// Spec of candidate URL.
-    pub url: String,
-    /// Any associated reporting metadata.
-    #[serde(rename = "reportingMetadata")]
-    pub reporting_metadata: Vec<SharedStorageReportingMetadata>,
-}
-
-/// Bundles the parameters for shared storage access events whose
-/// presence/absence can vary according to SharedStorageAccessType.
-#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
-pub struct SharedStorageAccessParams {
-    /// Spec of the module script URL. Present only for
-    /// SharedStorageAccessMethods: addModule and createWorklet.
-    #[serde(
-        rename = "scriptSourceUrl",
-        default,
-        skip_serializing_if = "Option::is_none"
-    )]
-    pub script_source_url: Option<String>,
-    /// String denoting "context-origin", "script-origin", or a custom origin to
-    /// be used as the worklet's data origin. Present only for
-    /// SharedStorageAccessMethod: createWorklet.
-    #[serde(
-        rename = "dataOrigin",
-        default,
-        skip_serializing_if = "Option::is_none"
-    )]
-    pub data_origin: Option<String>,
-    /// Name of the registered operation to be run. Present only for
-    /// SharedStorageAccessMethods: run and selectURL.
-    #[serde(
-        rename = "operationName",
-        default,
-        skip_serializing_if = "Option::is_none"
-    )]
-    pub operation_name: Option<String>,
-    /// ID of the operation call. Present only for SharedStorageAccessMethods: run
-    /// and selectURL.
-    #[serde(
-        rename = "operationId",
-        default,
-        skip_serializing_if = "Option::is_none"
-    )]
-    pub operation_id: Option<String>,
-    /// Whether or not to keep the worket alive for future run or selectURL calls.
-    /// Present only for SharedStorageAccessMethods: run and selectURL.
-    #[serde(rename = "keepAlive", default, skip_serializing_if = "Option::is_none")]
-    pub keep_alive: Option<bool>,
-    /// Configures the private aggregation options. Present only for
-    /// SharedStorageAccessMethods: run and selectURL.
-    #[serde(
-        rename = "privateAggregationConfig",
-        default,
-        skip_serializing_if = "Option::is_none"
-    )]
-    pub private_aggregation_config: Option<SharedStoragePrivateAggregationConfig>,
-    /// The operation's serialized data in bytes (converted to a string). Present
-    /// only for SharedStorageAccessMethods: run and selectURL.
-    /// TODO(crbug.com/401011862): Consider updating this parameter to binary.
-    #[serde(
-        rename = "serializedData",
-        default,
-        skip_serializing_if = "Option::is_none"
-    )]
-    pub serialized_data: Option<String>,
-    /// Array of candidate URLs' specs, along with any associated metadata.
-    /// Present only for SharedStorageAccessMethod: selectURL.
-    #[serde(
-        rename = "urlsWithMetadata",
-        default,
-        skip_serializing_if = "Option::is_none"
-    )]
-    pub urls_with_metadata: Option<Vec<SharedStorageUrlWithMetadata>>,
-    /// Spec of the URN:UUID generated for a selectURL call. Present only for
-    /// SharedStorageAccessMethod: selectURL.
-    #[serde(rename = "urnUuid", default, skip_serializing_if = "Option::is_none")]
-    pub urn_uuid: Option<String>,
-    /// Key for a specific entry in an origin's shared storage. Present only for
-    /// SharedStorageAccessMethods: set, append, delete, and get.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub key: Option<String>,
-    /// Value for a specific entry in an origin's shared storage. Present only for
-    /// SharedStorageAccessMethods: set and append.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub value: Option<String>,
-    /// Whether or not to set an entry for a key if that key is already present.
-    /// Present only for SharedStorageAccessMethod: set.
-    #[serde(
-        rename = "ignoreIfPresent",
-        default,
-        skip_serializing_if = "Option::is_none"
-    )]
-    pub ignore_if_present: Option<bool>,
-    /// A number denoting the (0-based) order of the worklet's creation relative
-    /// to all other shared storage worklets created by documents using the
-    /// current storage partition. Present only for SharedStorageAccessMethods:
-    /// addModule, createWorklet.
-    #[serde(
-        rename = "workletOrdinal",
-        default,
-        skip_serializing_if = "Option::is_none"
-    )]
-    pub worklet_ordinal: Option<i64>,
-    /// Hex representation of the DevTools token used as the TargetID for the
-    /// associated shared storage worklet. Present only for
-    /// SharedStorageAccessMethods: addModule, createWorklet, run, selectURL, and
-    /// any other SharedStorageAccessMethod when the SharedStorageAccessScope is
-    /// sharedStorageWorklet.
-    #[serde(
-        rename = "workletTargetId",
-        default,
-        skip_serializing_if = "Option::is_none"
-    )]
-    pub worklet_target_id: Option<crate::protocol::target::TargetId>,
-    /// Name of the lock to be acquired, if present. Optionally present only for
-    /// SharedStorageAccessMethods: batchUpdate, set, append, delete, and clear.
-    #[serde(rename = "withLock", default, skip_serializing_if = "Option::is_none")]
-    pub with_lock: Option<String>,
-    /// If the method has been called as part of a batchUpdate, then this number
-    /// identifies the batch to which it belongs. Optionally present only for
-    /// SharedStorageAccessMethods: batchUpdate (required), set, append, delete,
-    /// and clear.
-    #[serde(
-        rename = "batchUpdateId",
-        default,
-        skip_serializing_if = "Option::is_none"
-    )]
-    pub batch_update_id: Option<String>,
-    /// Number of modifier methods sent in batch. Present only for
-    /// SharedStorageAccessMethod: batchUpdate.
-    #[serde(rename = "batchSize", default, skip_serializing_if = "Option::is_none")]
-    pub batch_size: Option<i64>,
+pub struct PrivateVerificationTokensIssuerConfig {
+    /// Origin of the token issuer.
+    #[serde(rename = "issuerOrigin")]
+    pub issuer_origin: String,
+    /// Origins authorized to redeem tokens from this issuer.
+    #[serde(rename = "redeemerOrigins")]
+    pub redeemer_origins: Vec<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -383,22 +147,6 @@ pub struct StorageBucketInfo {
     pub quota: f64,
     pub persistent: bool,
     pub durability: StorageBucketsDurability,
-}
-
-/// A single Related Website Set object.
-///
-/// Experimental: may change without notice.
-#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
-pub struct RelatedWebsiteSet {
-    /// The primary site of this set, along with the ccTLDs if there is any.
-    #[serde(rename = "primarySites")]
-    pub primary_sites: Vec<String>,
-    /// The associated sites of this set, along with the ccTLDs if there is any.
-    #[serde(rename = "associatedSites")]
-    pub associated_sites: Vec<String>,
-    /// The service sites of this set, along with the ccTLDs if there is any.
-    #[serde(rename = "serviceSites")]
-    pub service_sites: Vec<String>,
 }
 
 /// Returns a storage key given a frame id. Deprecated. Please use
@@ -768,138 +516,91 @@ impl crate::typed::Command for ClearTrustTokensParams {
     type Returns = ClearTrustTokensReturns;
 }
 
-/// Gets metadata for an origin's shared storage.
+/// Returns all stored Private Verification Tokens for the current browsing
+/// context.
 ///
 /// Experimental: may change without notice.
 ///
-/// Parameters of `Storage.getSharedStorageMetadata`.
+/// Parameters of `Storage.getPrivateVerificationTokens`.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
-pub struct GetSharedStorageMetadataParams {
-    #[serde(rename = "ownerOrigin")]
-    pub owner_origin: String,
-}
+pub struct GetPrivateVerificationTokensParams {}
 
-/// What `Storage.getSharedStorageMetadata` answers with.
+/// What `Storage.getPrivateVerificationTokens` answers with.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
-pub struct GetSharedStorageMetadataReturns {
-    pub metadata: SharedStorageMetadata,
+pub struct GetPrivateVerificationTokensReturns {
+    pub tokens: Vec<PrivateVerificationToken>,
 }
 
-impl crate::typed::Command for GetSharedStorageMetadataParams {
-    const METHOD: &'static str = "Storage.getSharedStorageMetadata";
-    type Returns = GetSharedStorageMetadataReturns;
+impl crate::typed::Command for GetPrivateVerificationTokensParams {
+    const METHOD: &'static str = "Storage.getPrivateVerificationTokens";
+    type Returns = GetPrivateVerificationTokensReturns;
 }
 
-/// Gets the entries in an given origin's shared storage.
+/// Returns the configured Private Verification Tokens issuers and their
+/// redeemer origins.
 ///
 /// Experimental: may change without notice.
 ///
-/// Parameters of `Storage.getSharedStorageEntries`.
+/// Parameters of `Storage.getPrivateVerificationTokensIssuerConfigs`.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
-pub struct GetSharedStorageEntriesParams {
-    #[serde(rename = "ownerOrigin")]
-    pub owner_origin: String,
-}
+pub struct GetPrivateVerificationTokensIssuerConfigsParams {}
 
-/// What `Storage.getSharedStorageEntries` answers with.
+/// What `Storage.getPrivateVerificationTokensIssuerConfigs` answers with.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
-pub struct GetSharedStorageEntriesReturns {
-    pub entries: Vec<SharedStorageEntry>,
+pub struct GetPrivateVerificationTokensIssuerConfigsReturns {
+    pub configs: Vec<PrivateVerificationTokensIssuerConfig>,
 }
 
-impl crate::typed::Command for GetSharedStorageEntriesParams {
-    const METHOD: &'static str = "Storage.getSharedStorageEntries";
-    type Returns = GetSharedStorageEntriesReturns;
+impl crate::typed::Command for GetPrivateVerificationTokensIssuerConfigsParams {
+    const METHOD: &'static str = "Storage.getPrivateVerificationTokensIssuerConfigs";
+    type Returns = GetPrivateVerificationTokensIssuerConfigsReturns;
 }
 
-/// Sets entry with `key` and `value` for a given origin's shared storage.
+/// Removes all Private Verification Tokens issued by the provided
+/// issuerOrigin.
 ///
 /// Experimental: may change without notice.
 ///
-/// Parameters of `Storage.setSharedStorageEntry`.
+/// Parameters of `Storage.clearPrivateVerificationTokens`.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
-pub struct SetSharedStorageEntryParams {
-    #[serde(rename = "ownerOrigin")]
-    pub owner_origin: String,
-    pub key: String,
-    pub value: String,
-    /// If `ignoreIfPresent` is included and true, then only sets the entry if
-    /// `key` doesn't already exist.
-    #[serde(
-        rename = "ignoreIfPresent",
-        default,
-        skip_serializing_if = "Option::is_none"
-    )]
-    pub ignore_if_present: Option<bool>,
+pub struct ClearPrivateVerificationTokensParams {
+    #[serde(rename = "issuerOrigin")]
+    pub issuer_origin: String,
 }
 
-impl crate::typed::Command for SetSharedStorageEntryParams {
-    const METHOD: &'static str = "Storage.setSharedStorageEntry";
+impl crate::typed::Command for ClearPrivateVerificationTokensParams {
+    const METHOD: &'static str = "Storage.clearPrivateVerificationTokens";
     type Returns = crate::typed::NoReturns;
 }
 
-/// Deletes entry for `key` (if it exists) for a given origin's shared
-/// storage.
+/// Removes a specific Private Verification Token by its ID.
 ///
 /// Experimental: may change without notice.
 ///
-/// Parameters of `Storage.deleteSharedStorageEntry`.
+/// Parameters of `Storage.deletePrivateVerificationToken`.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
-pub struct DeleteSharedStorageEntryParams {
-    #[serde(rename = "ownerOrigin")]
-    pub owner_origin: String,
-    pub key: String,
+pub struct DeletePrivateVerificationTokenParams {
+    #[serde(rename = "tokenId")]
+    pub token_id: String,
 }
 
-impl crate::typed::Command for DeleteSharedStorageEntryParams {
-    const METHOD: &'static str = "Storage.deleteSharedStorageEntry";
+impl crate::typed::Command for DeletePrivateVerificationTokenParams {
+    const METHOD: &'static str = "Storage.deletePrivateVerificationToken";
     type Returns = crate::typed::NoReturns;
 }
 
-/// Clears all entries for a given origin's shared storage.
+/// Set tracking for Private Verification Tokens.
 ///
 /// Experimental: may change without notice.
 ///
-/// Parameters of `Storage.clearSharedStorageEntries`.
+/// Parameters of `Storage.setPrivateVerificationTokensTracking`.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
-pub struct ClearSharedStorageEntriesParams {
-    #[serde(rename = "ownerOrigin")]
-    pub owner_origin: String,
-}
-
-impl crate::typed::Command for ClearSharedStorageEntriesParams {
-    const METHOD: &'static str = "Storage.clearSharedStorageEntries";
-    type Returns = crate::typed::NoReturns;
-}
-
-/// Resets the budget for `ownerOrigin` by clearing all budget withdrawals.
-///
-/// Experimental: may change without notice.
-///
-/// Parameters of `Storage.resetSharedStorageBudget`.
-#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
-pub struct ResetSharedStorageBudgetParams {
-    #[serde(rename = "ownerOrigin")]
-    pub owner_origin: String,
-}
-
-impl crate::typed::Command for ResetSharedStorageBudgetParams {
-    const METHOD: &'static str = "Storage.resetSharedStorageBudget";
-    type Returns = crate::typed::NoReturns;
-}
-
-/// Enables/disables issuing of sharedStorageAccessed events.
-///
-/// Experimental: may change without notice.
-///
-/// Parameters of `Storage.setSharedStorageTracking`.
-#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
-pub struct SetSharedStorageTrackingParams {
+pub struct SetPrivateVerificationTokensTrackingParams {
     pub enable: bool,
 }
 
-impl crate::typed::Command for SetSharedStorageTrackingParams {
-    const METHOD: &'static str = "Storage.setSharedStorageTracking";
+impl crate::typed::Command for SetPrivateVerificationTokensTrackingParams {
+    const METHOD: &'static str = "Storage.setPrivateVerificationTokensTracking";
     type Returns = crate::typed::NoReturns;
 }
 
@@ -954,27 +655,6 @@ pub struct RunBounceTrackingMitigationsReturns {
 impl crate::typed::Command for RunBounceTrackingMitigationsParams {
     const METHOD: &'static str = "Storage.runBounceTrackingMitigations";
     type Returns = RunBounceTrackingMitigationsReturns;
-}
-
-/// Returns the effective Related Website Sets in use by this profile for the
-/// browser session. The effective Related Website Sets will not change during
-/// a browser session.
-///
-/// Experimental: may change without notice.
-///
-/// Parameters of `Storage.getRelatedWebsiteSets`.
-#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
-pub struct GetRelatedWebsiteSetsParams {}
-
-/// What `Storage.getRelatedWebsiteSets` answers with.
-#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
-pub struct GetRelatedWebsiteSetsReturns {
-    pub sets: Vec<RelatedWebsiteSet>,
-}
-
-impl crate::typed::Command for GetRelatedWebsiteSetsParams {
-    const METHOD: &'static str = "Storage.getRelatedWebsiteSets";
-    type Returns = GetRelatedWebsiteSetsReturns;
 }
 
 /// A cache's contents have been modified.
@@ -1062,71 +742,6 @@ impl crate::typed::Event for IndexedDbListUpdatedEvent {
     const METHOD: &'static str = "Storage.indexedDBListUpdated";
 }
 
-/// Shared storage was accessed by the associated page. The following
-/// parameters are included in all events.
-///
-/// Payload of the `Storage.sharedStorageAccessed` event.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct SharedStorageAccessedEvent {
-    /// Time of the access.
-    #[serde(rename = "accessTime")]
-    pub access_time: crate::protocol::network::TimeSinceEpoch,
-    /// Enum value indicating the access scope.
-    pub scope: SharedStorageAccessScope,
-    /// Enum value indicating the Shared Storage API method invoked.
-    pub method: SharedStorageAccessMethod,
-    /// DevTools Frame Token for the primary frame tree's root.
-    #[serde(rename = "mainFrameId")]
-    pub main_frame_id: crate::protocol::page::FrameId,
-    /// Serialization of the origin owning the Shared Storage data.
-    #[serde(rename = "ownerOrigin")]
-    pub owner_origin: String,
-    /// Serialization of the site owning the Shared Storage data.
-    #[serde(rename = "ownerSite")]
-    pub owner_site: String,
-    /// The sub-parameters wrapped by `params` are all optional and their
-    /// presence/absence depends on `type`.
-    pub params: SharedStorageAccessParams,
-}
-
-impl crate::typed::Event for SharedStorageAccessedEvent {
-    const METHOD: &'static str = "Storage.sharedStorageAccessed";
-}
-
-/// A shared storage run or selectURL operation finished its execution. The
-/// following parameters are included in all events.
-///
-/// Payload of the `Storage.sharedStorageWorkletOperationExecutionFinished` event.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct SharedStorageWorkletOperationExecutionFinishedEvent {
-    /// Time that the operation finished.
-    #[serde(rename = "finishedTime")]
-    pub finished_time: crate::protocol::network::TimeSinceEpoch,
-    /// Time, in microseconds, from start of shared storage JS API call until end
-    /// of operation execution in the worklet.
-    #[serde(rename = "executionTime")]
-    pub execution_time: i64,
-    /// Enum value indicating the Shared Storage API method invoked.
-    pub method: SharedStorageAccessMethod,
-    /// ID of the operation call.
-    #[serde(rename = "operationId")]
-    pub operation_id: String,
-    /// Hex representation of the DevTools token used as the TargetID for the
-    /// associated shared storage worklet.
-    #[serde(rename = "workletTargetId")]
-    pub worklet_target_id: crate::protocol::target::TargetId,
-    /// DevTools Frame Token for the primary frame tree's root.
-    #[serde(rename = "mainFrameId")]
-    pub main_frame_id: crate::protocol::page::FrameId,
-    /// Serialization of the origin owning the Shared Storage data.
-    #[serde(rename = "ownerOrigin")]
-    pub owner_origin: String,
-}
-
-impl crate::typed::Event for SharedStorageWorkletOperationExecutionFinishedEvent {
-    const METHOD: &'static str = "Storage.sharedStorageWorkletOperationExecutionFinished";
-}
-
 /// Payload of the `Storage.storageBucketCreatedOrUpdated` event.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct StorageBucketCreatedOrUpdatedEvent {
@@ -1147,4 +762,16 @@ pub struct StorageBucketDeletedEvent {
 
 impl crate::typed::Event for StorageBucketDeletedEvent {
     const METHOD: &'static str = "Storage.storageBucketDeleted";
+}
+
+/// Private Verification Tokens have been stored or deleted.
+///
+/// Experimental: may change without notice.
+///
+/// Payload of the `Storage.privateVerificationTokensUpdated` event.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct PrivateVerificationTokensUpdatedEvent {}
+
+impl crate::typed::Event for PrivateVerificationTokensUpdatedEvent {
+    const METHOD: &'static str = "Storage.privateVerificationTokensUpdated";
 }

@@ -569,6 +569,32 @@ impl crate::typed::Command for SetSafeAreaInsetsOverrideParams {
     type Returns = crate::typed::NoReturns;
 }
 
+/// Overrides virtual keyboard geometry in CSS pixels, relative to the
+/// top-level viewport. The provided rect is used for
+/// navigator.virtualKeyboard.boundingRect, geometrychange events, and
+/// env(keyboard-inset-*) values on the inspected frame. The override applies
+/// independently of navigator.virtualKeyboard.overlaysContent so clients can
+/// preview overlay geometry without mutating page state. Values are rounded
+/// to the nearest CSS pixel. Omitting the rect clears the override.
+///
+/// Experimental: may change without notice.
+///
+/// Parameters of `Emulation.setVirtualKeyboardGeometryOverride`.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct SetVirtualKeyboardGeometryOverrideParams {
+    #[serde(
+        rename = "keyboardRect",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub keyboard_rect: Option<crate::protocol::dom::Rect>,
+}
+
+impl crate::typed::Command for SetVirtualKeyboardGeometryOverrideParams {
+    const METHOD: &'static str = "Emulation.setVirtualKeyboardGeometryOverride";
+    type Returns = crate::typed::NoReturns;
+}
+
 /// Overrides the values of device screen dimensions (window.screen.width,
 /// window.screen.height, window.innerWidth, window.innerHeight, and
 /// "device-width"/"device-height"-related CSS media query results).
@@ -693,6 +719,26 @@ pub struct SetDeviceMetricsOverrideParams {
         skip_serializing_if = "Option::is_none"
     )]
     pub screen_orientation_lock_emulation: Option<bool>,
+    /// Viewport meta tag behavior. Default: `default`. Note: if `mobile` is
+    /// `true`, the viewport meta tag is always enabled.
+    ///
+    /// Experimental: may change without notice.
+    #[serde(
+        rename = "viewportMeta",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub viewport_meta: Option<SetDeviceMetricsOverrideViewportMeta>,
+    /// Text layout mode. Default: `default`. Note: if `mobile` is `true`, mobile
+    /// text layout mode (text autosizing) is always enabled.
+    ///
+    /// Experimental: may change without notice.
+    #[serde(
+        rename = "textLayoutMode",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub text_layout_mode: Option<SetDeviceMetricsOverrideTextLayoutMode>,
 }
 
 /// The values `scrollbarType` accepts on `setDeviceMetricsOverride`.
@@ -701,6 +747,38 @@ pub enum SetDeviceMetricsOverrideScrollbarType {
     /// `overlay`
     #[serde(rename = "overlay")]
     Overlay,
+    /// `default`
+    #[serde(rename = "default")]
+    Default,
+    /// A value this vendored schema does not list. Chrome adds values ahead of
+    /// the published protocol, so an unrecognised one is kept as it arrived
+    /// rather than failing the payload it came in.
+    #[serde(untagged)]
+    Unrecognized(String),
+}
+
+/// The values `viewportMeta` accepts on `setDeviceMetricsOverride`.
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum SetDeviceMetricsOverrideViewportMeta {
+    /// `enable`
+    #[serde(rename = "enable")]
+    Enable,
+    /// `default`
+    #[serde(rename = "default")]
+    Default,
+    /// A value this vendored schema does not list. Chrome adds values ahead of
+    /// the published protocol, so an unrecognised one is kept as it arrived
+    /// rather than failing the payload it came in.
+    #[serde(untagged)]
+    Unrecognized(String),
+}
+
+/// The values `textLayoutMode` accepts on `setDeviceMetricsOverride`.
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum SetDeviceMetricsOverrideTextLayoutMode {
+    /// `mobile`
+    #[serde(rename = "mobile")]
+    Mobile,
     /// `default`
     #[serde(rename = "default")]
     Default,
@@ -1305,6 +1383,52 @@ pub struct SetHardwareConcurrencyOverrideParams {
 
 impl crate::typed::Command for SetHardwareConcurrencyOverrideParams {
     const METHOD: &'static str = "Emulation.setHardwareConcurrencyOverride";
+    type Returns = crate::typed::NoReturns;
+}
+
+/// Overrides the value of navigator.cpuPerformance
+///
+/// Experimental: may change without notice.
+///
+/// Parameters of `Emulation.setCPUPerformanceOverride`.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct SetCpuPerformanceOverrideParams {
+    /// Override value. Omitting the parameter disables the override.
+    #[serde(
+        rename = "performanceTier",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub performance_tier: Option<SetCpuPerformanceOverridePerformanceTier>,
+}
+
+/// The values `performanceTier` accepts on `setCPUPerformanceOverride`.
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum SetCpuPerformanceOverridePerformanceTier {
+    /// `unknown`
+    #[serde(rename = "unknown")]
+    Unknown,
+    /// `low`
+    #[serde(rename = "low")]
+    Low,
+    /// `mid`
+    #[serde(rename = "mid")]
+    Mid,
+    /// `high`
+    #[serde(rename = "high")]
+    High,
+    /// `ultra`
+    #[serde(rename = "ultra")]
+    Ultra,
+    /// A value this vendored schema does not list. Chrome adds values ahead of
+    /// the published protocol, so an unrecognised one is kept as it arrived
+    /// rather than failing the payload it came in.
+    #[serde(untagged)]
+    Unrecognized(String),
+}
+
+impl crate::typed::Command for SetCpuPerformanceOverrideParams {
+    const METHOD: &'static str = "Emulation.setCPUPerformanceOverride";
     type Returns = crate::typed::NoReturns;
 }
 

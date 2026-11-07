@@ -50,8 +50,6 @@ pub enum CookieExclusionReason {
     /// `ExcludeDomainNonASCII`
     #[serde(rename = "ExcludeDomainNonASCII")]
     ExcludeDomainNonAscii,
-    /// `ExcludeThirdPartyCookieBlockedInFirstPartySet`
-    ExcludeThirdPartyCookieBlockedInFirstPartySet,
     /// `ExcludeThirdPartyPhaseout`
     ExcludeThirdPartyPhaseout,
     /// `ExcludePortMismatch`
@@ -695,6 +693,12 @@ pub enum ConnectionAllowlistError {
     ReportingEndpointNotToken,
     /// `InvalidUrlPattern`
     InvalidUrlPattern,
+    /// `IFrameAttributeLoosensEmbeddingRequirement`
+    IFrameAttributeLoosensEmbeddingRequirement,
+    /// `InvalidAllowConnectionAllowlistFrom`
+    InvalidAllowConnectionAllowlistFrom,
+    /// `EmbeddingRequirementNotSatisfied`
+    EmbeddingRequirementNotSatisfied,
     /// A value this vendored schema does not list. Chrome adds values ahead of
     /// the published protocol, so an unrecognised one is kept as it arrived
     /// rather than failing the payload it came in.
@@ -802,6 +806,8 @@ pub enum GenericIssueErrorType {
     FormModelContextRequiredParameterMissingName,
     /// `FormModelContextParameterMissingName`
     FormModelContextParameterMissingName,
+    /// `GeolocationPromptWithoutUserGesture`
+    GeolocationPromptWithoutUserGesture,
     /// A value this vendored schema does not list. Chrome adds values ahead of
     /// the published protocol, so an unrecognised one is kept as it arrived
     /// rather than failing the payload it came in.
@@ -995,6 +1001,8 @@ pub enum FederatedAuthRequestIssueReason {
     CorsError,
     /// `SuppressedBySegmentationPlatform`
     SuppressedBySegmentationPlatform,
+    /// `PopupBlockedByConnectionAllowlist`
+    PopupBlockedByConnectionAllowlist,
     /// A value this vendored schema does not list. Chrome adds values ahead of
     /// the published protocol, so an unrecognised one is kept as it arrived
     /// rather than failing the payload it came in.
@@ -1163,6 +1171,8 @@ pub enum EmailVerificationRequestIssueReason {
     TokenVerificationKbMissingCnf,
     /// `TokenVerificationKbSignatureFailed`
     TokenVerificationKbSignatureFailed,
+    /// `CrossOriginIframeNotSupported`
+    CrossOriginIframeNotSupported,
     /// A value this vendored schema does not list. Chrome adds values ahead of
     /// the published protocol, so an unrecognised one is kept as it arrived
     /// rather than failing the payload it came in.
@@ -1445,6 +1455,38 @@ pub struct PermissionElementIssueDetails {
     pub disable_reason: Option<String>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum WebInstallIssueReason {
+    /// `ManifestParsingOrNetworkError`
+    ManifestParsingOrNetworkError,
+    /// `StartUrlInvalid`
+    StartUrlInvalid,
+    /// `ManifestMissingNameOrShortName`
+    ManifestMissingNameOrShortName,
+    /// `ManifestMissingId`
+    ManifestMissingId,
+    /// `NoManifest`
+    NoManifest,
+    /// A value this vendored schema does not list. Chrome adds values ahead of
+    /// the published protocol, so an unrecognised one is kept as it arrived
+    /// rather than failing the payload it came in.
+    #[serde(untagged)]
+    Unrecognized(String),
+}
+
+/// This issue reports a failure involving a web app manifest used by a Web
+/// Install operation.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct WebInstallIssueDetails {
+    #[serde(
+        rename = "manifestUrl",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub manifest_url: Option<String>,
+    pub reason: WebInstallIssueReason,
+}
+
 /// The issue warns about blocked calls to privacy sensitive APIs via the
 /// Selective Permissions Intervention.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
@@ -1544,6 +1586,8 @@ pub enum InspectorIssueCode {
     EmailVerificationRequestIssue,
     /// `LazyLoadImageIssue`
     LazyLoadImageIssue,
+    /// `WebInstallIssue`
+    WebInstallIssue,
     /// A value this vendored schema does not list. Chrome adds values ahead of
     /// the published protocol, so an unrecognised one is kept as it arrived
     /// rather than failing the payload it came in.
@@ -1739,6 +1783,12 @@ pub struct InspectorIssueDetails {
         skip_serializing_if = "Option::is_none"
     )]
     pub lazy_load_image_issue_details: Option<LazyLoadImageIssueDetails>,
+    #[serde(
+        rename = "webInstallIssueDetails",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub web_install_issue_details: Option<WebInstallIssueDetails>,
 }
 
 /// A unique id for a DevTools inspector issue. Allows other entities (e.g.

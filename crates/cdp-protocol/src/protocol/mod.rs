@@ -57,6 +57,7 @@ pub mod extensions;
 pub mod fed_cm;
 pub mod fetch;
 pub mod file_system;
+pub mod find_in_page;
 pub mod headless_experimental;
 pub mod heap_profiler;
 pub mod indexed_db;

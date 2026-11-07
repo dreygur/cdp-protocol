@@ -161,9 +161,6 @@ pub enum PermissionType {
     /// `storageAccess`
     #[serde(rename = "storageAccess")]
     StorageAccess,
-    /// `topLevelStorageAccess`
-    #[serde(rename = "topLevelStorageAccess")]
-    TopLevelStorageAccess,
     /// `videoCapture`
     #[serde(rename = "videoCapture")]
     VideoCapture,
@@ -565,6 +562,29 @@ impl crate::typed::Command for GetBrowserCommandLineParams {
     type Returns = GetBrowserCommandLineReturns;
 }
 
+/// Adds or updates a mock camera in the shared video capture device list for
+/// test automation. The mock camera is not scoped to a particular page or
+/// frame and is removed when the DevTools session that created it
+/// disconnects.
+///
+/// Experimental: may change without notice.
+///
+/// Parameters of `Browser.addMockCamera`.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct AddMockCameraParams {
+    /// Required non-empty identifier for the mock camera within the current
+    /// DevTools session. Different sessions can use the same identifier without
+    /// replacing each other's cameras. This is not the MediaDeviceInfo.deviceId
+    /// exposed to the page.
+    #[serde(rename = "deviceId")]
+    pub device_id: String,
+}
+
+impl crate::typed::Command for AddMockCameraParams {
+    const METHOD: &'static str = "Browser.addMockCamera";
+    type Returns = crate::typed::NoReturns;
+}
+
 /// Get Chrome histograms.
 ///
 /// Experimental: may change without notice.
@@ -771,6 +791,48 @@ pub struct AddPrivacySandboxEnrollmentOverrideParams {
 impl crate::typed::Command for AddPrivacySandboxEnrollmentOverrideParams {
     const METHOD: &'static str = "Browser.addPrivacySandboxEnrollmentOverride";
     type Returns = crate::typed::NoReturns;
+}
+
+/// Gets the current globally-applied privacy control status See
+/// <https://www.w3.org/TR/gpc/#get-global-privacy-control>
+///
+/// Experimental: may change without notice.
+///
+/// Parameters of `Browser.getGlobalPrivacyControl`.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct GetGlobalPrivacyControlParams {}
+
+/// What `Browser.getGlobalPrivacyControl` answers with.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct GetGlobalPrivacyControlReturns {
+    pub gpc: bool,
+}
+
+impl crate::typed::Command for GetGlobalPrivacyControlParams {
+    const METHOD: &'static str = "Browser.getGlobalPrivacyControl";
+    type Returns = GetGlobalPrivacyControlReturns;
+}
+
+/// Sets and then gets the current globally-applied privacy control status See
+/// <https://www.w3.org/TR/gpc/#set-global-privacy-control>
+///
+/// Experimental: may change without notice.
+///
+/// Parameters of `Browser.setGlobalPrivacyControl`.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct SetGlobalPrivacyControlParams {
+    pub gpc: bool,
+}
+
+/// What `Browser.setGlobalPrivacyControl` answers with.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct SetGlobalPrivacyControlReturns {
+    pub gpc: bool,
+}
+
+impl crate::typed::Command for SetGlobalPrivacyControlParams {
+    const METHOD: &'static str = "Browser.setGlobalPrivacyControl";
+    type Returns = SetGlobalPrivacyControlReturns;
 }
 
 /// Fired when page is about to start a download.

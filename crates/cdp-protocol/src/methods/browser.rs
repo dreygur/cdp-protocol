@@ -82,6 +82,17 @@ pub const GET_VERSION: &str = "Browser.getVersion";
 /// Returns: `arguments`
 pub const GET_BROWSER_COMMAND_LINE: &str = "Browser.getBrowserCommandLine";
 
+/// Adds or updates a mock camera in the shared video capture device list for
+/// test automation. The mock camera is not scoped to a particular page or
+/// frame and is removed when the DevTools session that created it
+/// disconnects.
+///
+/// Experimental: may change without notice.
+///
+/// Parameters:
+/// - `deviceId`: string
+pub const ADD_MOCK_CAMERA: &str = "Browser.addMockCamera";
+
 /// Get Chrome histograms.
 ///
 /// Experimental: may change without notice.
@@ -167,3 +178,22 @@ pub const EXECUTE_BROWSER_COMMAND: &str = "Browser.executeBrowserCommand";
 /// - `url`: string
 pub const ADD_PRIVACY_SANDBOX_ENROLLMENT_OVERRIDE: &str =
     "Browser.addPrivacySandboxEnrollmentOverride";
+
+/// Gets the current globally-applied privacy control status See
+/// <https://www.w3.org/TR/gpc/#get-global-privacy-control>
+///
+/// Experimental: may change without notice.
+///
+/// Returns: `gpc`
+pub const GET_GLOBAL_PRIVACY_CONTROL: &str = "Browser.getGlobalPrivacyControl";
+
+/// Sets and then gets the current globally-applied privacy control status See
+/// <https://www.w3.org/TR/gpc/#set-global-privacy-control>
+///
+/// Experimental: may change without notice.
+///
+/// Parameters:
+/// - `gpc`: boolean
+///
+/// Returns: `gpc`
+pub const SET_GLOBAL_PRIVACY_CONTROL: &str = "Browser.setGlobalPrivacyControl";

@@ -314,6 +314,9 @@ pub enum RemoteObjectSubtype {
     /// `wasmvalue`
     #[serde(rename = "wasmvalue")]
     Wasmvalue,
+    /// `deferredmodule`
+    #[serde(rename = "deferredmodule")]
+    Deferredmodule,
     /// `trustedtype`
     #[serde(rename = "trustedtype")]
     Trustedtype,
@@ -459,6 +462,9 @@ pub enum ObjectPreviewSubtype {
     /// `wasmvalue`
     #[serde(rename = "wasmvalue")]
     Wasmvalue,
+    /// `deferredmodule`
+    #[serde(rename = "deferredmodule")]
+    Deferredmodule,
     /// `trustedtype`
     #[serde(rename = "trustedtype")]
     Trustedtype,
@@ -589,6 +595,9 @@ pub enum PropertyPreviewSubtype {
     /// `wasmvalue`
     #[serde(rename = "wasmvalue")]
     Wasmvalue,
+    /// `deferredmodule`
+    #[serde(rename = "deferredmodule")]
+    Deferredmodule,
     /// `trustedtype`
     #[serde(rename = "trustedtype")]
     Trustedtype,

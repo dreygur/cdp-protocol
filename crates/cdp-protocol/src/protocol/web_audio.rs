@@ -154,6 +154,8 @@ pub struct BaseAudioContext {
     /// Context sample rate.
     #[serde(rename = "sampleRate")]
     pub sample_rate: f64,
+    #[serde(rename = "renderQuantumSize")]
+    pub render_quantum_size: f64,
 }
 
 /// Protocol object for AudioListener

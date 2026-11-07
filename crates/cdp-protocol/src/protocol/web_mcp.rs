@@ -25,6 +25,14 @@ pub struct Annotation {
         skip_serializing_if = "Option::is_none"
     )]
     pub untrusted_content: Option<bool>,
+    /// A hint indicating that executing the tool will result in consequential
+    /// actions, ex: booking a flight, transferring money.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub consequential: Option<bool>,
+    /// If true, indicates that the tool is intended for debugging and developer
+    /// tooling rather than end-user interactions.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub debugging: Option<bool>,
     /// If the declarative tool was declared with the autosubmit attribute.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub autosubmit: Option<bool>,
@@ -46,9 +54,18 @@ pub enum InvocationStatus {
     Unrecognized(String),
 }
 
+/// Unique identifier of a registered tool. A new identifier is created every
+/// time a tool is registered, so a tool that is unregistered and then
+/// registered again under the same name gets a different identifier. Clients
+/// should treat it as an opaque string.
+pub type ToolId = String;
+
 /// Definition of a tool that can be invoked.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct Tool {
+    /// Tool identifier.
+    #[serde(rename = "toolId")]
+    pub tool_id: ToolId,
     /// Tool name.
     pub name: String,
     /// Tool description.
@@ -60,6 +77,13 @@ pub struct Tool {
         skip_serializing_if = "Option::is_none"
     )]
     pub input_schema: Option<serde_json::Value>,
+    /// Schema for the tool's output structure.
+    #[serde(
+        rename = "outputSchema",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub output_schema: Option<serde_json::Value>,
     /// Optional annotations for the tool.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub annotations: Option<Annotation>,
@@ -85,6 +109,9 @@ pub struct Tool {
 /// Definition of a tool that was removed.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct RemovedTool {
+    /// Identifier of the removed tool.
+    #[serde(rename = "toolId")]
+    pub tool_id: ToolId,
     /// Tool name.
     pub name: String,
     /// Frame identifier associated with the tool registration.
@@ -190,9 +217,6 @@ impl crate::typed::Event for ToolsRemovedEvent {
 /// Payload of the `WebMCP.toolInvoked` event.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct ToolInvokedEvent {
-    /// Name of the tool to invoke.
-    #[serde(rename = "toolName")]
-    pub tool_name: String,
     /// Frame id
     #[serde(rename = "frameId")]
     pub frame_id: crate::protocol::page::FrameId,
@@ -201,6 +225,15 @@ pub struct ToolInvokedEvent {
     pub invocation_id: String,
     /// The input parameters used for the invocation.
     pub input: String,
+    /// Name of the tool to invoke. Missing if the tool was invoked by its
+    /// identifier, but could not be found (e.g., it was already unregistered), so
+    /// its name could not be recovered.
+    #[serde(rename = "toolName", default, skip_serializing_if = "Option::is_none")]
+    pub tool_name: Option<String>,
+    /// Identifier of the tool to invoke. Missing if the tool was invoked by name,
+    /// but could not be found, so its identifier could not be recovered.
+    #[serde(rename = "toolId", default, skip_serializing_if = "Option::is_none")]
+    pub tool_id: Option<ToolId>,
 }
 
 impl crate::typed::Event for ToolInvokedEvent {

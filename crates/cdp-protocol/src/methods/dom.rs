@@ -511,6 +511,17 @@ pub const GET_ANCHOR_ELEMENT: &str = "DOM.getAnchorElement";
 /// Returns: `nodeIds`
 pub const FORCE_SHOW_POPOVER: &str = "DOM.forceShowPopover";
 
+/// Returns candidate nodes that are configured as triggers for the given
+/// popover.
+///
+/// Experimental: may change without notice.
+///
+/// Parameters:
+/// - `nodeId`: NodeId
+///
+/// Returns: `backendNodeIds`
+pub const GET_IMPLICIT_ANCHOR_CANDIDATES: &str = "DOM.getImplicitAnchorCandidates";
+
 /// When enabling, this API forces an element to gain interest in its target,
 /// keeping interest active until disabled.
 ///
@@ -520,3 +531,26 @@ pub const FORCE_SHOW_POPOVER: &str = "DOM.forceShowPopover";
 /// - `nodeId`: NodeId
 /// - `enable`: boolean
 pub const FORCE_SHOW_INTEREST: &str = "DOM.forceShowInterest";
+
+/// Sets a spelling or grammar error marker on the given range of text. See
+/// <https://github.com/Igalia/explainers/blob/main/force-spelling-grammar-markers/README.md>
+/// Note: exactly one between nodeId, backendNodeId and objectId should be
+/// passed to identify the node.
+///
+/// Experimental: may change without notice.
+///
+/// Parameters:
+/// - `nodeId`: NodeId (optional)
+/// - `backendNodeId`: BackendNodeId (optional)
+/// - `objectId`: Runtime.RemoteObjectId (optional)
+/// - `type`: string
+/// - `start`: integer
+/// - `end`: integer
+pub const SET_TEXT_MARKER: &str = "DOM.setTextMarker";
+
+/// Clears the spelling and grammar error text markers overlapping the ranges
+/// set by setTextMarker in this session. These markers are also removed when
+/// the DOM domain is disabled or the session ends.
+///
+/// Experimental: may change without notice.
+pub const CLEAR_TEXT_MARKERS: &str = "DOM.clearTextMarkers";

@@ -12,3 +12,10 @@
 ///
 /// Returns: `metrics`
 pub const GET_AD_METRICS: &str = "Ads.getAdMetrics";
+
+/// Retrieves ad scripts for the current page. To minimize payload size, this
+/// only returns the newly tracked ad scripts since the last call to
+/// getAdScripts (i.e., the delta).
+///
+/// Returns: `newScripts`
+pub const GET_AD_SCRIPTS: &str = "Ads.getAdScripts";

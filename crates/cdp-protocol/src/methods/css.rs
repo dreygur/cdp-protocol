@@ -69,6 +69,13 @@ pub const FORCE_PSEUDO_STATE: &str = "CSS.forcePseudoState";
 /// - `forced`: boolean
 pub const FORCE_STARTING_STYLE: &str = "CSS.forceStartingStyle";
 
+/// Forces a position-try option for the given node.
+///
+/// Parameters:
+/// - `nodeId`: DOM.NodeId
+/// - `index`: integer (optional)
+pub const FORCE_POSITION_TRY_OPTION: &str = "CSS.forcePositionTryOption";
+
 /// `CSS.getBackgroundColors`
 ///
 /// Parameters:

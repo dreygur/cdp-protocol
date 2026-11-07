@@ -132,13 +132,29 @@ pub const GET_INSTALLABILITY_ERRORS: &str = "Page.getInstallabilityErrors";
 /// Returns: `primaryIcon`
 pub const GET_MANIFEST_ICONS: &str = "Page.getManifestIcons";
 
-/// Returns the unique (PWA) app id. Only returns values if the feature flag
-/// 'WebAppEnableManifestId' is enabled
+/// Returns the unique (PWA) app id, along with IWA bundle ID and parent app
+/// info. Only returns values if the feature flag 'WebAppEnableManifestId' is
+/// enabled
 ///
 /// Experimental: may change without notice.
 ///
-/// Returns: `appId`, `recommendedId`
+/// Returns: `appId`, `recommendedId`, `bundleId`, `parentAppName`
 pub const GET_APP_ID: &str = "Page.getAppId";
+
+/// Returns the list of installed child Sub-Apps for the inspected parent app.
+///
+/// Experimental: may change without notice.
+///
+/// Returns: `subApps`
+pub const GET_SUB_APPS: &str = "Page.getSubApps";
+
+/// Returns the list of sibling Sub-Apps sharing the same parent app if the
+/// inspected context is a Sub-App.
+///
+/// Experimental: may change without notice.
+///
+/// Returns: `subApps`
+pub const GET_SIBLING_SUB_APPS: &str = "Page.getSiblingSubApps";
 
 /// `Page.getAdScriptAncestry`
 ///
@@ -149,6 +165,19 @@ pub const GET_APP_ID: &str = "Page.getAppId";
 ///
 /// Returns: `adScriptAncestry`
 pub const GET_AD_SCRIPT_ANCESTRY: &str = "Page.getAdScriptAncestry";
+
+/// Returns the words that the frame's document added to its spell check
+/// custom dictionary with `document.spellCheckCustomDictionary.addWords()`,
+/// sorted. Page script cannot read the dictionary back; this lets developers
+/// inspect it.
+///
+/// Experimental: may change without notice.
+///
+/// Parameters:
+/// - `frameId`: FrameId
+///
+/// Returns: `words`
+pub const GET_SPELL_CHECK_CUSTOM_DICTIONARY: &str = "Page.getSpellCheckCustomDictionary";
 
 /// Returns present frame tree structure.
 ///
@@ -421,6 +450,8 @@ pub const SET_TOUCH_EMULATION_ENABLED: &str = "Page.setTouchEmulationEnabled";
 /// - `maxWidth`: integer (optional)
 /// - `maxHeight`: integer (optional)
 /// - `everyNthFrame`: integer (optional)
+/// - `maxFramesInFlight`: integer (optional)
+/// - `sendLastFrame`: boolean (optional)
 pub const START_SCREENCAST: &str = "Page.startScreencast";
 
 /// Starts screencast video recording.
@@ -432,6 +463,7 @@ pub const START_SCREENCAST: &str = "Page.startScreencast";
 /// - `maxWidth`: integer (optional)
 /// - `maxHeight`: integer (optional)
 /// - `frameRate`: integer (optional)
+/// - `captureArea`: string (optional)
 ///
 /// Returns: `stream`
 pub const START_SCREEN_RECORDING: &str = "Page.startScreenRecording";
@@ -561,3 +593,11 @@ pub const SET_PRERENDERING_ALLOWED: &str = "Page.setPrerenderingAllowed";
 ///
 /// Returns: `content`
 pub const GET_ANNOTATED_PAGE_CONTENT: &str = "Page.getAnnotatedPageContent";
+
+/// Configures input visualization on the page.
+///
+/// Experimental: may change without notice.
+///
+/// Parameters:
+/// - `clicks`: boolean (optional)
+pub const SET_INPUT_VISUALIZATION: &str = "Page.setInputVisualization";
